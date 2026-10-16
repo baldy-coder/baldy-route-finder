@@ -1,0 +1,2846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Baldy Route Finder — Sun Valley</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="Baldy" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            snow: { 50:'#f8fafc', 100:'#f1f5f9', 200:'#e2e8f0' },
+            mountain: { 700:'#334155', 800:'#1e293b', 900:'#0f172a' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    body { font-family: 'Inter', sans-serif; margin: 0; }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+    .step-hover { transition: all 0.2s ease; }
+    .step-hover:hover { transform: scale(1.02); }
+    .step-active { animation: stepPulse 1.2s ease-in-out infinite; }
+    @keyframes stepPulse { 0%,100%{ box-shadow: 0 0 0 0 rgba(59,130,246,0); } 50%{ box-shadow: 0 0 12px 4px rgba(59,130,246,0.4); } }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-mountain-900 text-white min-h-screen">
+  <div id="root"></div>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW register failed:', err));
+      });
+    }
+  </script>
+
+  <script type="text/babel">
+    const { useState, useCallback, useMemo, useEffect } = React;
+
+    /* ================================================================
+       DATA — All runs with corrected difficulties, times, connections
+       ================================================================ */
+
+    const RUNS = {
+      // ── WARM SPRINGS / CHALLENGER ──
+      "upper-warm-springs":  { id:"upper-warm-springs",  name:"Upper Warm Springs",  difficulty:"blue",  area:"Warm Springs", time:2, connectsTo:["1-80","warm-springs-face"] },
+      "upper-limelight":     { id:"upper-limelight",     name:"Upper Limelight",     difficulty:"black", area:"Warm Springs", time:2, connectsTo:["1-80","mid-limelight"] },
+      "1-80":                { id:"1-80",                name:"1-80",                difficulty:"blue",  area:"Warm Springs", time:4, connectsTo:["international","warm-springs-face","mid-limelight","upper-college"] },
+      "international":       { id:"international",       name:"International",       difficulty:"black", area:"Warm Springs", time:3, connectsTo:["mid-warm-springs"] },
+      "warm-springs-face":   { id:"warm-springs-face",   name:"Warm Springs Face",   difficulty:"blue",  area:"Warm Springs", time:3, connectsTo:["mid-warm-springs"] },
+      "mid-limelight":       { id:"mid-limelight",       name:"Mid Limelight",       difficulty:"black", area:"Warm Springs", time:2, connectsTo:["lower-limelight"] },
+      "lower-limelight":     { id:"lower-limelight",     name:"Lower Limelight",     difficulty:"blue",  area:"Warm Springs", time:2, connectsTo:["lower-warm-springs"] },
+      "mid-warm-springs":    { id:"mid-warm-springs",    name:"Mid Warm Springs",    difficulty:"green", area:"Warm Springs", time:2, connectsTo:["lower-warm-springs","mid-greyhawk","mid-hemingway","mid-cozy"] },
+      "lower-warm-springs":  { id:"lower-warm-springs",  name:"Lower Warm Springs",  difficulty:"green", area:"Warm Springs", time:3, connectsTo:["warm-springs-base"] },
+      "lower-picabo-street": { id:"lower-picabo-street", name:"Lower Picabo Street", difficulty:"blue",  area:"Warm Springs", time:2, connectsTo:["lower-warm-springs"] },
+      "upper-greyhawk":      { id:"upper-greyhawk",      name:"Upper Greyhawk",      difficulty:"black", area:"Warm Springs", time:2, connectsTo:["mid-greyhawk"] },
+      "mid-greyhawk":        { id:"mid-greyhawk",        name:"Mid Greyhawk",        difficulty:"blue",  area:"Warm Springs", time:2, connectsTo:["lower-greyhawk"] },
+      "lower-greyhawk":      { id:"lower-greyhawk",      name:"Lower Greyhawk",      difficulty:"green", area:"Warm Springs", time:3, connectsTo:["warm-springs-base"] },
+      "upper-hemingway":     { id:"upper-hemingway",     name:"Upper Hemingway",     difficulty:"black", area:"Warm Springs", time:2, connectsTo:["mid-hemingway"] },
+      "mid-hemingway":       { id:"mid-hemingway",       name:"Mid Hemingway",       difficulty:"blue",  area:"Warm Springs", time:2, connectsTo:["lower-hemingway"] },
+      "lower-hemingway":     { id:"lower-hemingway",     name:"Lower Hemingway",     difficulty:"blue",  area:"Warm Springs", time:3, connectsTo:["warm-springs-base"] },
+      "upper-cozy":          { id:"upper-cozy",          name:"Upper Cozy",          difficulty:"black", area:"Warm Springs", time:2, connectsTo:["mid-cozy"] },
+      "mid-cozy":            { id:"mid-cozy",            name:"Mid Cozy",            difficulty:"blue",  area:"Warm Springs", time:2, connectsTo:["lower-cozy"] },
+      "lower-cozy":          { id:"lower-cozy",          name:"Lower Cozy",          difficulty:"blue",  area:"Warm Springs", time:3, connectsTo:["warm-springs-base"] },
+      "upper-picabo-street": { id:"upper-picabo-street", name:"Upper Picabo Street", difficulty:"black", area:"Warm Springs", time:2, connectsTo:["mid-picabo-street"] },
+      "mid-picabo-street":   { id:"mid-picabo-street",   name:"Mid Picabo Street",   difficulty:"black", area:"Warm Springs", time:2, connectsTo:["lower-picabo-street"] },
+
+      // ── COLLEGE / FRENCHMAN'S / FLYING SQUIRREL ──
+      "upper-college":          { id:"upper-college",          name:"Upper College",          difficulty:"green", area:"Frenchman's", time:3, connectsTo:["upper-flying-squirrel","1-80"] },
+      "lower-college":          { id:"lower-college",          name:"Lower College",          difficulty:"green", area:"Frenchman's", time:3, connectsTo:["graduate","upper-can-can","upper-french-dip","sunset-strip"] },
+      "upper-flying-squirrel":  { id:"upper-flying-squirrel",  name:"Upper Flying Squirrel",  difficulty:"blue",  area:"Frenchman's", time:2, connectsTo:["upper-janss-pass","arnolds-run","lower-flying-squirrel"] },
+      "lower-flying-squirrel":  { id:"lower-flying-squirrel",  name:"Lower Flying Squirrel",  difficulty:"black", area:"Warm Springs", time:3, connectsTo:["lower-warm-springs"] },
+      "upper-janss-pass":       { id:"upper-janss-pass",       name:"Upper Janss Pass",       difficulty:"blue",  area:"Frenchman's", time:2, connectsTo:["lower-janss-pass"] },
+      "lower-janss-pass":       { id:"lower-janss-pass",       name:"Lower Janss Pass",       difficulty:"blue",  area:"Frenchman's", time:3, connectsTo:["frenchmans-base"] },
+      "arnolds-run":            { id:"arnolds-run",            name:"Arnold's Run",           difficulty:"black", area:"Frenchman's", time:3, connectsTo:["lower-picabo-street"] },
+      "graduate":               { id:"graduate",               name:"Graduate",               difficulty:"blue",  area:"Frenchman's", time:2, connectsTo:["under-graduate"] },
+      "under-graduate":         { id:"under-graduate",         name:"Under-Graduate",         difficulty:"blue",  area:"Frenchman's", time:3, connectsTo:["frenchmans-base"] },
+      "upper-can-can":          { id:"upper-can-can",          name:"Upper Can-Can",          difficulty:"blue",  area:"Frenchman's", time:2, connectsTo:["lower-can-can"] },
+      "lower-can-can":          { id:"lower-can-can",          name:"Lower Can-Can",          difficulty:"blue",  area:"Frenchman's", time:3, connectsTo:["frenchmans-base"] },
+      "upper-french-dip":       { id:"upper-french-dip",       name:"Upper French Dip",       difficulty:"blue",  area:"Frenchman's", time:2, connectsTo:["lower-french-dip"] },
+      "lower-french-dip":       { id:"lower-french-dip",       name:"Lower French Dip",       difficulty:"black", area:"Frenchman's", time:3, connectsTo:["frenchmans-base"] },
+
+      // ── RIVER RUN ──
+      "upper-river-run":   { id:"upper-river-run",   name:"Upper River Run",   difficulty:"black", area:"River Run", time:3, connectsTo:["mid-river-run"] },
+      "mid-river-run":     { id:"mid-river-run",     name:"Mid River Run",     difficulty:"blue",  area:"River Run", time:2, connectsTo:["lower-river-run"] },
+      "lower-river-run":   { id:"lower-river-run",   name:"Lower River Run",   difficulty:"green", area:"River Run", time:3, connectsTo:["river-run-base"] },
+      "roundhouse-slope":  { id:"roundhouse-slope",  name:"Roundhouse Slope",  difficulty:"green", area:"River Run", time:3, connectsTo:["mid-river-run","lower-river-run","olympic-lane"] },
+      "gun-tower-lane":    { id:"gun-tower-lane",    name:"Gun Tower Lane",    difficulty:"green", area:"River Run", time:3, connectsTo:["seattle-ridge-express-base","lower-broadway"] },
+      "upper-canyon":      { id:"upper-canyon",       name:"Upper Canyon",      difficulty:"blue",  area:"River Run", time:2, connectsTo:["lower-canyon"] },
+      "lower-canyon":      { id:"lower-canyon",       name:"Lower Canyon",      difficulty:"blue",  area:"River Run", time:3, connectsTo:["lower-river-run"] },
+      "sunset-strip":      { id:"sunset-strip",       name:"Sunset Strip",      difficulty:"green", area:"River Run", time:3, connectsTo:["lower-river-run"] },
+      "olympic-lane":      { id:"olympic-lane",       name:"Olympic Lane",      difficulty:"green", area:"River Run", time:3, connectsTo:["lower-river-run"] },
+
+      // ── RIDGE / HOLIDAY ──
+      "ridge":          { id:"ridge",          name:"Ridge",          difficulty:"blue",  area:"Ridge", time:3, connectsTo:["blue-grouse","cut-off","upper-holiday"] },
+      "blue-grouse":    { id:"blue-grouse",    name:"Blue Grouse",    difficulty:"blue",  area:"Ridge", time:3, connectsTo:["mid-river-run","mid-holiday"] },
+      "cut-off":        { id:"cut-off",        name:"Cut Off",        difficulty:"blue",  area:"Ridge", time:2, connectsTo:["mid-holiday"] },
+      "upper-holiday":  { id:"upper-holiday",  name:"Upper Holiday",  difficulty:"black", area:"Ridge", time:2, connectsTo:["mid-holiday"] },
+      "mid-holiday":    { id:"mid-holiday",    name:"Mid Holiday",    difficulty:"black", area:"Ridge", time:3, connectsTo:["lower-holiday"] },
+      "lower-holiday":  { id:"lower-holiday",  name:"Lower Holiday",  difficulty:"black", area:"Ridge", time:3, connectsTo:["lower-river-run"] },
+
+      // ── CHRISTMAS ──
+      "christmas-ridge":      { id:"christmas-ridge",      name:"Christmas Ridge",      difficulty:"blue",  area:"Christmas", time:3, connectsTo:["christmas-bowl","little-easter-bowl","easter-bowl"] },
+      "christmas-bowl":       { id:"christmas-bowl",       name:"Christmas Bowl",       difficulty:"blue",  area:"Christmas", time:3, connectsTo:["mid-christmas-bowl"] },
+      "mid-christmas-bowl":   { id:"mid-christmas-bowl",   name:"Mid Christmas Bowl",   difficulty:"blue",  area:"Christmas", time:2, connectsTo:["lower-christmas-bowl"] },
+      "lower-christmas-bowl": { id:"lower-christmas-bowl", name:"Lower Christmas Bowl", difficulty:"black", area:"Christmas", time:3, connectsTo:["lower-broadway"] },
+      "little-easter-bowl":   { id:"little-easter-bowl",   name:"Little Easter Bowl",   difficulty:"black", area:"Christmas", time:3, connectsTo:["lower-broadway","seattle-ridge-express-base"] },
+      "easter-bowl":          { id:"easter-bowl",          name:"Easter Bowl",          difficulty:"black", area:"Christmas", time:3, connectsTo:["lower-broadway","seattle-ridge-express-base"] },
+
+      // ── BOWLS / SUNRISE / LOOKOUT ──
+      "lookout-bowl":        { id:"lookout-bowl",        name:"Lookout Bowl",        difficulty:"black",        area:"Bowls", time:4, connectsTo:["lower-broadway","seattle-ridge-express-base"] },
+      "sunrise-bowl":        { id:"sunrise-bowl",        name:"Sunrise Bowl",        difficulty:"black",        area:"Bowls", time:4, connectsTo:["lower-broadway","numbers","cold-springs-chutes","the-glades"] },
+      "bowl-lane":           { id:"bowl-lane",           name:"Bowl Lane",           difficulty:"green",        area:"Bowls", time:4, connectsTo:["mayday-bowl","leftys-bowl","kaitlyns-bowl","sigis-bowl","broadway-face"] },
+      "mayday-bowl":         { id:"mayday-bowl",         name:"Mayday Bowl",         difficulty:"black",        area:"Bowls", time:3, connectsTo:["broadway"] },
+      "leftys-bowl":         { id:"leftys-bowl",         name:"Lefty's Bowl",        difficulty:"black",        area:"Bowls", time:3, connectsTo:["broadway"] },
+      "kaitlyns-bowl":       { id:"kaitlyns-bowl",       name:"Kaitlyn's Bowl",      difficulty:"black",        area:"Bowls", time:3, connectsTo:["broadway"] },
+      "sigis-bowl":          { id:"sigis-bowl",          name:"Sigi's Bowl",         difficulty:"blue",         area:"Bowls", time:3, connectsTo:["broadway"] },
+      "broadway-face":       { id:"broadway-face",       name:"Broadway Face",       difficulty:"green",        area:"Bowls", time:3, connectsTo:["broadway"] },
+      "numbers":             { id:"numbers",             name:"Numbers",             difficulty:"black",        area:"Bowls", time:3, connectsTo:["lower-broadway"] },
+      "cold-springs-chutes": { id:"cold-springs-chutes", name:"Cold Springs Chutes", difficulty:"double-black", area:"Bowls", time:4, connectsTo:["lower-broadway"] },
+      "the-glades":          { id:"the-glades",          name:"The Glades",          difficulty:"black",        area:"Bowls", time:4, connectsTo:["lower-broadway"] },
+
+      // ── SEATTLE RIDGE / BROADWAY ──
+      "gretchens-gold":  { id:"gretchens-gold",  name:"Gretchen's Gold",  difficulty:"green", area:"Seattle Ridge", time:4, connectsTo:["lower-broadway","seattle-ridge-express-base"] },
+      "muffys-medals":   { id:"muffys-medals",   name:"Muffy's Medals",   difficulty:"green", area:"Seattle Ridge", time:3, connectsTo:["broadway"] },
+      "christins-silver":{ id:"christins-silver", name:"Christin's Silver",difficulty:"green", area:"Seattle Ridge", time:3, connectsTo:["broadway"] },
+      "leigh-lane":      { id:"leigh-lane",       name:"Leigh Lane",       difficulty:"green", area:"Seattle Ridge", time:3, connectsTo:["broadway"] },
+      "broadway":        { id:"broadway",          name:"Broadway",         difficulty:"green", area:"Seattle Ridge", time:3, connectsTo:["mayday-express-base","seattle-ridge-express-base","lower-broadway"] },
+      "lower-broadway":  { id:"lower-broadway",    name:"Lower Broadway",   difficulty:"green", area:"Seattle Ridge", time:4, connectsTo:["lower-broadway-base"] },
+    };
+
+    /* ================================================================
+       LIFTS — ride times estimated from vertical rise
+       ================================================================ */
+
+    // All summit runs — accessible from any lift that reaches the top
+    const SUMMIT_RUNS = [
+      "upper-warm-springs","upper-limelight","upper-river-run",
+      "ridge","christmas-ridge","lookout-bowl","upper-college",
+      "little-easter-bowl","easter-bowl"
+    ];
+
+    const LIFTS = {
+      "challenger-top":    { id:"challenger-top",    name:"Challenger Express (to summit)", time:9,  base:"warm-springs-base",         topRuns:SUMMIT_RUNS },
+      "challenger-mid":    { id:"challenger-mid",    name:"Challenger Express (to mid)",    time:5,  base:"warm-springs-base",         topRuns:["upper-greyhawk","upper-hemingway","upper-cozy"] },
+      "flying-squirrel":   { id:"flying-squirrel",   name:"Flying Squirrel Express",       time:7,  base:"warm-springs-base",         topRuns:["lower-college","upper-flying-squirrel","upper-picabo-street"] },
+      "frenchmans":        { id:"frenchmans",        name:"Frenchman's",                   time:6,  base:"frenchmans-base",           topRuns:["lower-college"] },
+      "rr-lookout":        { id:"rr-lookout",        name:"River Run Express → Lookout",   time:14, base:"river-run-base",            topRuns:SUMMIT_RUNS },
+      "gondola-christmas": { id:"gondola-christmas", name:"Gondola → Christmas Lift",      time:18, base:"river-run-base",            topRuns:SUMMIT_RUNS },
+      "broadway-express":  { id:"broadway-express",  name:"Broadway Express",              time:7,  base:"lower-broadway-base",       topRuns:["roundhouse-slope","upper-canyon","gun-tower-lane"] },
+      "broadway-christmas":{ id:"broadway-christmas",name:"Broadway Express → Christmas Lift", time:15, base:"lower-broadway-base",  topRuns:SUMMIT_RUNS },
+      "gondola-seattle":   { id:"gondola-seattle",   name:"Gondola → Gun Tower → Seattle Ridge", time:15, base:"river-run-base", topRuns:["gretchens-gold","muffys-medals","christins-silver","leigh-lane","sunrise-bowl"] },
+      "seattle-ridge":     { id:"seattle-ridge",     name:"Seattle Ridge Express",         time:5,  base:"seattle-ridge-express-base", topRuns:["gretchens-gold","muffys-medals","christins-silver","leigh-lane","sunrise-bowl"] },
+      "mayday-express":    { id:"mayday-express",    name:"Mayday Express",               time:6,  base:"mayday-express-base",       topRuns:["bowl-lane"] },
+    };
+
+    /* ================================================================
+       BASES — where lifts depart from
+       ================================================================ */
+
+    const BASES = {
+      "warm-springs-base":         { name:"Warm Springs Base",    lifts:["challenger-top","challenger-mid","flying-squirrel"] },
+      "river-run-base":            { name:"River Run Base",       lifts:["rr-lookout","gondola-christmas","gondola-seattle"] },
+      "frenchmans-base":           { name:"Frenchman's Base",     lifts:["frenchmans"] },
+      "lower-broadway-base":       { name:"Lower Broadway Base",  lifts:["broadway-express","broadway-christmas"] },
+      "seattle-ridge-express-base":{ name:"Seattle Ridge Base",   lifts:["seattle-ridge"] },
+      "mayday-express-base":       { name:"Mayday Base",          lifts:["mayday-express"] },
+    };
+
+    /* ================================================================
+       FACILITIES — lodges with bathrooms/food, for break insertion.
+       atBases: break can happen when currentBase matches (after a run, before the next lift)
+       afterLifts: break can happen right after riding one of these lifts (before skiing down)
+       ================================================================ */
+
+    const FACILITIES = {
+      "warm-springs-lodge":  { name:"Warm Springs Lodge",  hasBathroom:true, hasFood:true, popularLunch:true,  atBases:["warm-springs-base"], afterLifts:[] },
+      "river-run-lodge":     { name:"River Run Lodge",     hasBathroom:true, hasFood:true, popularLunch:true,  atBases:["river-run-base"],     afterLifts:[] },
+      "seattle-ridge-lodge": { name:"Seattle Ridge Lodge", hasBathroom:true, hasFood:true, popularLunch:true,  atBases:[], afterLifts:["seattle-ridge","gondola-seattle"] },
+      "lookout-lodge":       { name:"Lookout Lodge",       hasBathroom:true, hasFood:true, popularLunch:false, atBases:[], afterLifts:["challenger-top","rr-lookout","gondola-christmas","broadway-christmas"] },
+    };
+
+    /* ================================================================
+       COORDINATES — pixel positions on the 2600×1467 trail map image
+       Populated via the Map Editor (Shift+E). Paste JSON output here.
+       ================================================================ */
+
+    const RUN_COORDS = {
+  "1-80": [
+    [
+      1323,
+      123
+    ],
+    [
+      1397,
+      120
+    ],
+    [
+      1469,
+      125
+    ],
+    [
+      1512,
+      129
+    ],
+    [
+      1521,
+      137
+    ],
+    [
+      1480,
+      151
+    ],
+    [
+      1480,
+      169
+    ],
+    [
+      1467,
+      181
+    ],
+    [
+      1442,
+      189
+    ],
+    [
+      1435,
+      212
+    ],
+    [
+      1476,
+      234
+    ],
+    [
+      1451,
+      256
+    ]
+  ],
+  "arnolds-run": [
+    [
+      1674,
+      388
+    ],
+    [
+      1760,
+      428
+    ]
+  ],
+  "blue-grouse": [
+    [
+      1210,
+      222
+    ],
+    [
+      1271,
+      280
+    ]
+  ],
+  "bowl-lane": [
+    [
+      994,
+      74
+    ],
+    [
+      926,
+      84
+    ],
+    [
+      863,
+      94
+    ],
+    [
+      782,
+      106
+    ],
+    [
+      739,
+      94
+    ]
+  ],
+  "broadway": [
+    [
+      635,
+      161
+    ],
+    [
+      669,
+      197
+    ],
+    [
+      701,
+      214
+    ],
+    [
+      716,
+      234
+    ],
+    [
+      739,
+      264
+    ],
+    [
+      732,
+      299
+    ],
+    [
+      730,
+      335
+    ],
+    [
+      719,
+      347
+    ],
+    [
+      701,
+      374
+    ]
+  ],
+  "broadway-face": [
+    [
+      737,
+      96
+    ],
+    [
+      716,
+      100
+    ],
+    [
+      710,
+      118
+    ],
+    [
+      633,
+      149
+    ]
+  ],
+  "christins-silver": [
+    [
+      496,
+      147
+    ],
+    [
+      534,
+      159
+    ],
+    [
+      615,
+      208
+    ],
+    [
+      658,
+      226
+    ],
+    [
+      680,
+      240
+    ]
+  ],
+  "christmas-bowl": [
+    [
+      1201,
+      165
+    ],
+    [
+      1122,
+      206
+    ],
+    [
+      1068,
+      240
+    ],
+    [
+      1021,
+      260
+    ],
+    [
+      1000,
+      274
+    ]
+  ],
+  "christmas-ridge": [
+    [
+      1237,
+      118
+    ],
+    [
+      1178,
+      141
+    ],
+    [
+      1113,
+      163
+    ],
+    [
+      1084,
+      183
+    ],
+    [
+      1061,
+      218
+    ],
+    [
+      1007,
+      248
+    ],
+    [
+      978,
+      274
+    ]
+  ],
+  "cold-springs-chutes": [
+    [
+      356,
+      335
+    ],
+    [
+      415,
+      380
+    ],
+    [
+      473,
+      455
+    ],
+    [
+      550,
+      523
+    ],
+    [
+      572,
+      594
+    ]
+  ],
+  "cut-off": [
+    [
+      1192,
+      250
+    ],
+    [
+      1262,
+      293
+    ]
+  ],
+  "easter-bowl": [
+    [
+      1104,
+      98
+    ],
+    [
+      1043,
+      163
+    ],
+    [
+      994,
+      201
+    ],
+    [
+      940,
+      234
+    ],
+    [
+      885,
+      260
+    ],
+    [
+      818,
+      293
+    ],
+    [
+      768,
+      317
+    ]
+  ],
+  "graduate": [
+    [
+      1455,
+      325
+    ],
+    [
+      1501,
+      353
+    ],
+    [
+      1537,
+      398
+    ],
+    [
+      1552,
+      434
+    ]
+  ],
+  "gretchens-gold": [
+    [
+      453,
+      143
+    ],
+    [
+      460,
+      165
+    ],
+    [
+      482,
+      191
+    ],
+    [
+      566,
+      256
+    ],
+    [
+      647,
+      299
+    ],
+    [
+      716,
+      331
+    ]
+  ],
+  "gun-tower-lane": [
+    [
+      1050,
+      327
+    ],
+    [
+      987,
+      339
+    ],
+    [
+      910,
+      359
+    ],
+    [
+      865,
+      372
+    ],
+    [
+      861,
+      363
+    ],
+    [
+      775,
+      380
+    ],
+    [
+      757,
+      359
+    ]
+  ],
+  "international": [
+    [
+      1525,
+      137
+    ],
+    [
+      1559,
+      143
+    ],
+    [
+      1579,
+      153
+    ],
+    [
+      1591,
+      163
+    ],
+    [
+      1591,
+      177
+    ],
+    [
+      1597,
+      197
+    ]
+  ],
+  "kaitlyns-bowl": [
+    [
+      867,
+      94
+    ],
+    [
+      800,
+      159
+    ],
+    [
+      725,
+      224
+    ]
+  ],
+  "leftys-bowl": [
+    [
+      915,
+      88
+    ],
+    [
+      856,
+      139
+    ],
+    [
+      795,
+      187
+    ],
+    [
+      764,
+      216
+    ],
+    [
+      734,
+      238
+    ]
+  ],
+  "leigh-lane": [
+    [
+      473,
+      137
+    ],
+    [
+      538,
+      141
+    ],
+    [
+      593,
+      145
+    ],
+    [
+      633,
+      149
+    ],
+    [
+      642,
+      169
+    ]
+  ],
+  "little-easter-bowl": [
+    [
+      1208,
+      114
+    ],
+    [
+      1138,
+      141
+    ],
+    [
+      1066,
+      175
+    ],
+    [
+      1005,
+      210
+    ],
+    [
+      928,
+      244
+    ],
+    [
+      883,
+      260
+    ],
+    [
+      809,
+      299
+    ],
+    [
+      786,
+      299
+    ]
+  ],
+  "lookout-bowl": [
+    [
+      1048,
+      94
+    ],
+    [
+      967,
+      169
+    ],
+    [
+      921,
+      208
+    ],
+    [
+      872,
+      248
+    ],
+    [
+      809,
+      299
+    ]
+  ],
+  "lower-broadway": [
+    [
+      696,
+      378
+    ],
+    [
+      624,
+      416
+    ],
+    [
+      622,
+      449
+    ],
+    [
+      680,
+      467
+    ],
+    [
+      712,
+      489
+    ],
+    [
+      701,
+      525
+    ],
+    [
+      674,
+      546
+    ],
+    [
+      658,
+      578
+    ],
+    [
+      593,
+      592
+    ],
+    [
+      554,
+      596
+    ],
+    [
+      482,
+      637
+    ],
+    [
+      502,
+      679
+    ]
+  ],
+  "lower-can-can": [
+    [
+      1519,
+      473
+    ],
+    [
+      1539,
+      485
+    ],
+    [
+      1615,
+      534
+    ]
+  ],
+  "lower-canyon": [
+    [
+      1181,
+      420
+    ],
+    [
+      1214,
+      465
+    ],
+    [
+      1268,
+      511
+    ]
+  ],
+  "lower-christmas-bowl": [
+    [
+      834,
+      372
+    ],
+    [
+      732,
+      440
+    ],
+    [
+      694,
+      465
+    ]
+  ],
+  "lower-college": [
+    [
+      1444,
+      282
+    ],
+    [
+      1437,
+      331
+    ],
+    [
+      1451,
+      382
+    ],
+    [
+      1392,
+      451
+    ],
+    [
+      1392,
+      467
+    ],
+    [
+      1433,
+      529
+    ],
+    [
+      1415,
+      560
+    ]
+  ],
+  "lower-cozy": [
+    [
+      2100,
+      493
+    ],
+    [
+      2140,
+      517
+    ],
+    [
+      2140,
+      542
+    ],
+    [
+      2138,
+      576
+    ],
+    [
+      2165,
+      613
+    ]
+  ],
+  "lower-flying-squirrel": [
+    [
+      1651,
+      394
+    ],
+    [
+      1710,
+      420
+    ],
+    [
+      1755,
+      457
+    ],
+    [
+      1825,
+      475
+    ]
+  ],
+  "lower-french-dip": [
+    [
+      1530,
+      529
+    ],
+    [
+      1595,
+      542
+    ],
+    [
+      1647,
+      568
+    ]
+  ],
+  "lower-greyhawk": [
+    [
+      2059,
+      544
+    ],
+    [
+      2111,
+      570
+    ],
+    [
+      2125,
+      586
+    ],
+    [
+      2167,
+      615
+    ]
+  ],
+  "lower-hemingway": [
+    [
+      2075,
+      513
+    ],
+    [
+      2120,
+      536
+    ],
+    [
+      2140,
+      554
+    ],
+    [
+      2156,
+      574
+    ],
+    [
+      2165,
+      602
+    ],
+    [
+      2165,
+      621
+    ]
+  ],
+  "lower-holiday": [
+    [
+      1244,
+      418
+    ],
+    [
+      1314,
+      487
+    ]
+  ],
+  "lower-janss-pass": [
+    [
+      1611,
+      420
+    ],
+    [
+      1622,
+      457
+    ],
+    [
+      1611,
+      519
+    ],
+    [
+      1660,
+      568
+    ]
+  ],
+  "lower-limelight": [
+    [
+      1649,
+      299
+    ],
+    [
+      1719,
+      321
+    ],
+    [
+      1771,
+      333
+    ]
+  ],
+  "lower-picabo-street": [
+    [
+      1706,
+      380
+    ],
+    [
+      1757,
+      412
+    ],
+    [
+      1816,
+      455
+    ]
+  ],
+  "lower-river-run": [
+    [
+      1273,
+      538
+    ],
+    [
+      1259,
+      594
+    ],
+    [
+      1237,
+      629
+    ],
+    [
+      1210,
+      661
+    ],
+    [
+      1190,
+      716
+    ],
+    [
+      1145,
+      779
+    ],
+    [
+      1142,
+      839
+    ],
+    [
+      1113,
+      902
+    ],
+    [
+      1102,
+      930
+    ]
+  ],
+  "lower-warm-springs": [
+    [
+      1789,
+      343
+    ],
+    [
+      1834,
+      430
+    ],
+    [
+      1866,
+      491
+    ],
+    [
+      1922,
+      534
+    ],
+    [
+      1992,
+      580
+    ],
+    [
+      2098,
+      604
+    ],
+    [
+      2161,
+      633
+    ]
+  ],
+  "mayday-bowl": [
+    [
+      971,
+      82
+    ],
+    [
+      899,
+      151
+    ],
+    [
+      845,
+      201
+    ],
+    [
+      800,
+      242
+    ],
+    [
+      748,
+      278
+    ]
+  ],
+  "mid-christmas-bowl": [
+    [
+      991,
+      282
+    ],
+    [
+      912,
+      321
+    ],
+    [
+      843,
+      365
+    ]
+  ],
+  "mid-cozy": [
+    [
+      1983,
+      404
+    ],
+    [
+      2007,
+      432
+    ],
+    [
+      2089,
+      483
+    ]
+  ],
+  "mid-greyhawk": [
+    [
+      1913,
+      406
+    ],
+    [
+      1962,
+      459
+    ],
+    [
+      1985,
+      471
+    ],
+    [
+      2007,
+      501
+    ],
+    [
+      2053,
+      521
+    ]
+  ],
+  "mid-hemingway": [
+    [
+      1951,
+      402
+    ],
+    [
+      1996,
+      457
+    ],
+    [
+      2021,
+      471
+    ],
+    [
+      2066,
+      501
+    ]
+  ],
+  "mid-holiday": [
+    [
+      1241,
+      307
+    ],
+    [
+      1248,
+      418
+    ]
+  ],
+  "mid-limelight": [
+    [
+      1460,
+      185
+    ],
+    [
+      1485,
+      206
+    ],
+    [
+      1550,
+      244
+    ],
+    [
+      1566,
+      260
+    ],
+    [
+      1611,
+      278
+    ],
+    [
+      1649,
+      297
+    ]
+  ],
+  "mid-picabo-street": [
+    [
+      1575,
+      301
+    ],
+    [
+      1633,
+      343
+    ],
+    [
+      1694,
+      368
+    ]
+  ],
+  "mid-river-run": [
+    [
+      1309,
+      291
+    ],
+    [
+      1307,
+      315
+    ],
+    [
+      1320,
+      353
+    ],
+    [
+      1318,
+      402
+    ],
+    [
+      1316,
+      434
+    ],
+    [
+      1318,
+      493
+    ]
+  ],
+  "mid-warm-springs": [
+    [
+      1597,
+      208
+    ],
+    [
+      1656,
+      226
+    ],
+    [
+      1697,
+      250
+    ],
+    [
+      1746,
+      291
+    ],
+    [
+      1789,
+      335
+    ]
+  ],
+  "muffys-medals": [
+    [
+      487,
+      159
+    ],
+    [
+      520,
+      177
+    ],
+    [
+      559,
+      203
+    ],
+    [
+      584,
+      236
+    ],
+    [
+      624,
+      256
+    ],
+    [
+      642,
+      278
+    ],
+    [
+      707,
+      311
+    ]
+  ],
+  "numbers": [
+    [
+      322,
+      270
+    ],
+    [
+      379,
+      299
+    ],
+    [
+      435,
+      315
+    ],
+    [
+      487,
+      325
+    ],
+    [
+      561,
+      335
+    ],
+    [
+      615,
+      337
+    ],
+    [
+      669,
+      343
+    ]
+  ],
+  "olympic-lane": [
+    [
+      1068,
+      408
+    ],
+    [
+      1072,
+      426
+    ],
+    [
+      1048,
+      440
+    ],
+    [
+      1041,
+      459
+    ],
+    [
+      1000,
+      483
+    ],
+    [
+      971,
+      525
+    ],
+    [
+      978,
+      538
+    ],
+    [
+      958,
+      562
+    ],
+    [
+      976,
+      578
+    ],
+    [
+      964,
+      617
+    ],
+    [
+      1005,
+      639
+    ],
+    [
+      1036,
+      649
+    ],
+    [
+      1052,
+      617
+    ],
+    [
+      1095,
+      610
+    ],
+    [
+      1115,
+      610
+    ],
+    [
+      1151,
+      578
+    ],
+    [
+      1210,
+      576
+    ],
+    [
+      1248,
+      576
+    ]
+  ],
+  "ridge": [
+    [
+      1259,
+      116
+    ],
+    [
+      1253,
+      165
+    ],
+    [
+      1199,
+      212
+    ],
+    [
+      1192,
+      240
+    ]
+  ],
+  "roundhouse-slope": [
+    [
+      1118,
+      341
+    ],
+    [
+      1108,
+      365
+    ],
+    [
+      1079,
+      396
+    ]
+  ],
+  "sigis-bowl": [
+    [
+      818,
+      102
+    ],
+    [
+      775,
+      137
+    ],
+    [
+      748,
+      167
+    ],
+    [
+      703,
+      201
+    ]
+  ],
+  "sunrise-bowl": [
+    [
+      286,
+      240
+    ],
+    [
+      284,
+      299
+    ],
+    [
+      282,
+      351
+    ],
+    [
+      261,
+      398
+    ],
+    [
+      261,
+      444
+    ],
+    [
+      304,
+      489
+    ],
+    [
+      385,
+      525
+    ],
+    [
+      493,
+      606
+    ]
+  ],
+  "sunset-strip": [
+    [
+      1406,
+      558
+    ],
+    [
+      1365,
+      548
+    ],
+    [
+      1338,
+      532
+    ],
+    [
+      1311,
+      525
+    ]
+  ],
+  "the-glades": [
+    [
+      275,
+      416
+    ],
+    [
+      369,
+      469
+    ],
+    [
+      460,
+      529
+    ],
+    [
+      534,
+      610
+    ]
+  ],
+  "under-graduate": [
+    [
+      1557,
+      442
+    ],
+    [
+      1591,
+      479
+    ],
+    [
+      1618,
+      523
+    ],
+    [
+      1656,
+      568
+    ]
+  ],
+  "upper-can-can": [
+    [
+      1458,
+      402
+    ],
+    [
+      1519,
+      469
+    ]
+  ],
+  "upper-canyon": [
+    [
+      1140,
+      335
+    ],
+    [
+      1178,
+      406
+    ]
+  ],
+  "upper-college": [
+    [
+      1275,
+      129
+    ],
+    [
+      1316,
+      171
+    ],
+    [
+      1404,
+      222
+    ],
+    [
+      1428,
+      254
+    ],
+    [
+      1444,
+      289
+    ]
+  ],
+  "upper-cozy": [
+    [
+      1958,
+      315
+    ],
+    [
+      1978,
+      398
+    ]
+  ],
+  "upper-flying-squirrel": [
+    [
+      1478,
+      303
+    ],
+    [
+      1588,
+      341
+    ],
+    [
+      1638,
+      382
+    ]
+  ],
+  "upper-french-dip": [
+    [
+      1404,
+      459
+    ],
+    [
+      1485,
+      509
+    ]
+  ],
+  "upper-greyhawk": [
+    [
+      1807,
+      325
+    ],
+    [
+      1915,
+      402
+    ]
+  ],
+  "upper-hemingway": [
+    [
+      1908,
+      313
+    ],
+    [
+      1958,
+      396
+    ]
+  ],
+  "upper-holiday": [
+    [
+      1169,
+      256
+    ],
+    [
+      1241,
+      313
+    ]
+  ],
+  "upper-janss-pass": [
+    [
+      1588,
+      351
+    ],
+    [
+      1611,
+      404
+    ]
+  ],
+  "upper-limelight": [
+    [
+      1307,
+      127
+    ],
+    [
+      1390,
+      149
+    ],
+    [
+      1462,
+      187
+    ]
+  ],
+  "upper-picabo-street": [
+    [
+      1473,
+      258
+    ],
+    [
+      1570,
+      297
+    ]
+  ],
+  "upper-river-run": [
+    [
+      1277,
+      163
+    ],
+    [
+      1302,
+      195
+    ],
+    [
+      1307,
+      284
+    ]
+  ],
+  "upper-warm-springs": [
+    [
+      1388,
+      127
+    ],
+    [
+      1487,
+      155
+    ]
+  ],
+  "warm-springs-face": [
+    [
+      1496,
+      163
+    ],
+    [
+      1613,
+      212
+    ]
+  ]
+};
+
+const LIFT_COORDS = {
+  "broadway-express": [
+    [
+      505,
+      683
+    ],
+    [
+      671,
+      586
+    ],
+    [
+      793,
+      536
+    ],
+    [
+      942,
+      442
+    ],
+    [
+      991,
+      408
+    ],
+    [
+      1043,
+      333
+    ]
+  ],
+  "broadway-christmas": [
+    [
+      507,
+      673
+    ],
+    [
+      707,
+      568
+    ],
+    [
+      809,
+      534
+    ],
+    [
+      980,
+      420
+    ],
+    [
+      1048,
+      333
+    ],
+    [
+      1090,
+      325
+    ],
+    [
+      1165,
+      224
+    ],
+    [
+      1246,
+      112
+    ]
+  ],
+  "challenger-mid": [
+    [
+      2167,
+      627
+    ],
+    [
+      2073,
+      564
+    ],
+    [
+      1989,
+      499
+    ],
+    [
+      1888,
+      408
+    ],
+    [
+      1805,
+      333
+    ]
+  ],
+  "challenger-top": [
+    [
+      2179,
+      639
+    ],
+    [
+      2062,
+      562
+    ],
+    [
+      1985,
+      499
+    ],
+    [
+      1915,
+      428
+    ],
+    [
+      1834,
+      359
+    ],
+    [
+      1807,
+      333
+    ],
+    [
+      1726,
+      289
+    ],
+    [
+      1649,
+      254
+    ],
+    [
+      1570,
+      222
+    ],
+    [
+      1482,
+      173
+    ],
+    [
+      1406,
+      139
+    ],
+    [
+      1298,
+      120
+    ]
+  ],
+  "flying-squirrel": [
+    [
+      2156,
+      645
+    ],
+    [
+      2014,
+      568
+    ],
+    [
+      1904,
+      503
+    ],
+    [
+      1820,
+      438
+    ],
+    [
+      1728,
+      368
+    ],
+    [
+      1636,
+      329
+    ],
+    [
+      1570,
+      301
+    ],
+    [
+      1467,
+      258
+    ]
+  ],
+  "frenchmans": [
+    [
+      1656,
+      568
+    ],
+    [
+      1460,
+      291
+    ]
+  ],
+  "gondola-christmas": [
+    [
+      1090,
+      932
+    ],
+    [
+      1099,
+      746
+    ],
+    [
+      1106,
+      633
+    ],
+    [
+      1104,
+      495
+    ],
+    [
+      1099,
+      341
+    ],
+    [
+      1093,
+      319
+    ],
+    [
+      1156,
+      232
+    ],
+    [
+      1241,
+      116
+    ]
+  ],
+  "gondola-seattle": [
+    [
+      1090,
+      924
+    ],
+    [
+      1102,
+      696
+    ],
+    [
+      1104,
+      621
+    ],
+    [
+      1104,
+      507
+    ],
+    [
+      1102,
+      337
+    ],
+    [
+      1066,
+      325
+    ],
+    [
+      1009,
+      335
+    ],
+    [
+      964,
+      341
+    ],
+    [
+      912,
+      357
+    ],
+    [
+      872,
+      372
+    ],
+    [
+      856,
+      365
+    ],
+    [
+      775,
+      378
+    ],
+    [
+      766,
+      351
+    ],
+    [
+      723,
+      349
+    ],
+    [
+      667,
+      331
+    ],
+    [
+      466,
+      139
+    ]
+  ],
+  "mayday-express": [
+    [
+      764,
+      315
+    ],
+    [
+      876,
+      218
+    ],
+    [
+      991,
+      74
+    ]
+  ],
+  "rr-lookout": [
+    [
+      1133,
+      920
+    ],
+    [
+      1291,
+      604
+    ],
+    [
+      1253,
+      118
+    ]
+  ],
+  "seattle-ridge": [
+    [
+      734,
+      353
+    ],
+    [
+      671,
+      331
+    ],
+    [
+      469,
+      139
+    ]
+  ]
+};
+
+
+    // Difficulty display info
+    const DIFF_META = {
+      "green":        { label:"Green",        icon:"●", color:"#22c55e", sortOrder:0 },
+      "blue":         { label:"Blue",         icon:"■", color:"#3b82f6", sortOrder:1 },
+      "black":        { label:"Black",        icon:"◆", color:"#1e293b", sortOrder:2 },
+      "double-black": { label:"Double Black", icon:"◆◆", color:"#dc2626", sortOrder:3 },
+    };
+
+    // How much the algorithm likes each difficulty for each preference
+    const PREF_SCORES = {
+      "just-greens":      { "green":1.0, "blue":0.12, "black":0.02, "double-black":0.0 },
+      "greens-and-blues": { "green":1.0, "blue":1.0,  "black":0.08, "double-black":0.0 },
+      "just-blues":       { "green":0.18,"blue":1.0,  "black":0.12, "double-black":0.0 },
+      "blues-and-blacks": { "green":0.12,"blue":1.0,  "black":1.0,  "double-black":0.6 },
+      "all":              { "green":1.0, "blue":1.0,  "black":1.0,  "double-black":0.6 },
+    };
+
+    const PREF_LABELS = {
+      "just-greens":      "Just greens",
+      "greens-and-blues": "Greens & blues",
+      "just-blues":       "Just blues",
+      "blues-and-blacks": "Blues & blacks",
+      "all":              "Green, blue & black",
+    };
+
+    /* ================================================================
+       ROUTE GENERATION ALGORITHM
+       ================================================================ */
+
+    function generateRoute(diffPref, totalMinutes, startBase) {
+      const scores = PREF_SCORES[diffPref];
+      const route = [];
+      let clock = 0;
+      let currentBase = startBase;
+      const runHistory = {};   // runId → step when last skied
+      const liftHistory = {};  // liftId → step when last used
+      const areaVisits = {};   // area → visit count
+      let step = 0;
+      let safety = 0;
+
+      while (clock < totalMinutes && safety < 300) {
+        safety++;
+        const remaining = totalMinutes - clock;
+        if (remaining < 5) break;
+
+        // ── PICK A LIFT ──
+        const base = BASES[currentBase];
+        if (!base) break;
+
+        let bestLift = null;
+        let bestLiftScore = -1;
+
+        for (const liftId of base.lifts) {
+          const lift = LIFTS[liftId];
+          if (!lift || lift.time > remaining - 3) continue;
+
+          // How good are the runs this lift serves? Factor in which ones we've already skied
+          let runQuality = 0;
+          let freshRunCount = 0;
+          for (const rId of lift.topRuns) {
+            const r = RUNS[rId];
+            if (!r) continue;
+            const ds = scores[r.difficulty] || 0;
+            const runAge = runHistory[rId] != null ? step - runHistory[rId] : 99;
+            const runFresh = runAge > 3 ? 1.0 : 0.2; // big penalty for recently skied runs
+            runQuality += ds * runFresh;
+            if (runAge > 3) freshRunCount++;
+          }
+          runQuality /= lift.topRuns.length || 1;
+
+          // Strongly prefer lifts we haven't taken recently
+          const liftAge = liftHistory[liftId] != null ? step - liftHistory[liftId] : 99;
+          const freshness = Math.min(liftAge / 8, 1); // takes 8 steps to fully reset (was 3)
+
+          // Bonus for lifts that access runs we haven't done yet
+          const explorationBonus = freshRunCount / (lift.topRuns.length || 1);
+
+          // Bonus for lifts that go to different areas than recent
+          const liftAreas = new Set(lift.topRuns.map(rId => RUNS[rId]?.area).filter(Boolean));
+          let areaNovelty = 0;
+          for (const area of liftAreas) {
+            const v = areaVisits[area] || 0;
+            areaNovelty += 1 / (1 + v * 0.4);
+          }
+          areaNovelty /= liftAreas.size || 1;
+
+          const score = runQuality * 0.30 + freshness * 0.25 + explorationBonus * 0.25 + areaNovelty * 0.10 + Math.random() * 0.10;
+          if (score > bestLiftScore) { bestLiftScore = score; bestLift = lift; }
+        }
+
+        if (!bestLift) break;
+
+        clock += bestLift.time;
+        liftHistory[bestLift.id] = step;
+        route.push({ type:"lift", id:bestLift.id, name:bestLift.name, time:bestLift.time, cumTime:clock });
+
+        // ── SKI DOWN — chain runs until we reach a base ──
+        let availableRunIds = [...bestLift.topRuns];
+
+        while (availableRunIds.length > 0 && clock < totalMinutes && safety < 300) {
+          safety++;
+
+          let bestRun = null;
+          let bestRunScore = -Infinity;
+
+          for (const rId of availableRunIds) {
+            const run = RUNS[rId];
+            if (!run) continue;
+
+            const diffScore = scores[run.difficulty] || 0;
+            const age = runHistory[rId] != null ? step - runHistory[rId] : 99;
+            const freshness = Math.min(age / 6, 1);
+            const visits = areaVisits[run.area] || 0;
+            const variety = 1 / (1 + visits * 0.3); // stronger area penalty
+            const jitter = Math.random() * 0.12;
+
+            const score = diffScore * 0.40 + freshness * 0.28 + variety * 0.20 + jitter;
+            if (score > bestRunScore) { bestRunScore = score; bestRun = run; }
+          }
+
+          if (!bestRun) break;
+
+          clock += bestRun.time;
+          runHistory[bestRun.id] = step;
+          areaVisits[bestRun.area] = (areaVisits[bestRun.area] || 0) + 1;
+          step++;
+
+          const meta = DIFF_META[bestRun.difficulty];
+          route.push({
+            type:"run", id:bestRun.id, name:bestRun.name, difficulty:bestRun.difficulty,
+            diffLabel:meta.label, diffColor:meta.color, diffIcon:meta.icon,
+            area:bestRun.area, time:bestRun.time, cumTime:clock
+          });
+
+          // Figure out next options
+          const nextRuns = [];
+          const nextBases = [];
+
+          for (const tId of bestRun.connectsTo) {
+            if (BASES[tId]) {
+              nextBases.push(tId);
+            } else if (RUNS[tId]) {
+              nextRuns.push(tId);
+            }
+          }
+
+          const timeLeft = totalMinutes - clock;
+
+          // If time is getting low, or only bases available, head to base
+          if (nextBases.length > 0 && (nextRuns.length === 0 || timeLeft < 14)) {
+            // Pick the base with the freshest/most varied lift options
+            if (nextBases.length === 1) {
+              currentBase = nextBases[0];
+            } else {
+              let bestBase = nextBases[0];
+              let bestBaseScore = -1;
+              for (const bId of nextBases) {
+                const b = BASES[bId];
+                if (!b) continue;
+                let bScore = 0;
+                for (const lId of b.lifts) {
+                  const la = liftHistory[lId] != null ? step - liftHistory[lId] : 99;
+                  bScore += Math.min(la / 5, 1);
+                }
+                bScore /= b.lifts.length || 1;
+                // Bonus for bases with more lift choices
+                bScore += b.lifts.length * 0.15;
+                bScore += Math.random() * 0.1;
+                if (bScore > bestBaseScore) { bestBaseScore = bScore; bestBase = bId; }
+              }
+              currentBase = bestBase;
+            }
+            break;
+          } else if (nextRuns.length > 0) {
+            // Decision point: some of these "next runs" might also give base access
+            // If time < 20 min, prefer runs that lead toward bases
+            if (timeLeft < 20 && nextBases.length > 0) {
+              // 60% chance to take the base, 40% to keep skiing
+              if (Math.random() < 0.6) { currentBase = nextBases[0]; break; }
+            }
+            availableRunIds = nextRuns;
+          } else {
+            break;
+          }
+        }
+      }
+
+      // Calculate stats
+      let totalLiftTime = 0, totalSkiTime = 0, runsSkied = 0, liftsRidden = 0;
+      const diffCounts = {};
+      for (const item of route) {
+        if (item.type === "lift") { totalLiftTime += item.time; liftsRidden++; }
+        else { totalSkiTime += item.time; runsSkied++; diffCounts[item.difficulty] = (diffCounts[item.difficulty]||0) + 1; }
+      }
+
+      return {
+        steps: route,
+        stats: { totalTime: clock, totalLiftTime, totalSkiTime, runsSkied, liftsRidden, diffCounts, endBase: currentBase }
+      };
+    }
+
+    /* ================================================================
+       BREAK INSERTION — walks a generated route and inserts bathroom/
+       lunch stops at the nearest lodge once enough time has passed.
+       Only inserts at natural stopping points: right after riding a
+       lift that tops out at a lodge, or right before the next lift
+       at a base that has one.
+       ================================================================ */
+
+    function insertBreaks(steps, endBase, { bathroomEnabled, bathroomInterval, lunchEnabled }) {
+      const BATHROOM_DURATION = 10;
+      const LUNCH_DURATION = 35;
+      const LUNCH_AFTER_FRACTION = 0.45; // trigger lunch once ~45% of the day's ski time has passed
+
+      const totalSkiMinutes = steps.length ? steps[steps.length - 1].cumTime : 0;
+      const lunchAfterMinutes = totalSkiMinutes * LUNCH_AFTER_FRACTION;
+
+      const result = [];
+      let timeSinceBathroom = 0;
+      let lunchTaken = !lunchEnabled;
+      let cumAdjust = 0;
+
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        const adjusted = { ...step, cumTime: step.cumTime + cumAdjust };
+        result.push(adjusted);
+        timeSinceBathroom += step.time;
+
+        // Which facility (if any) is reachable right after this step?
+        let facility = null;
+        if (step.type === "lift") {
+          facility = Object.values(FACILITIES).find(f => f.afterLifts.includes(step.id));
+        } else if (step.type === "run") {
+          const nextStep = steps[i + 1];
+          const arrivingBase = nextStep ? (nextStep.type === "lift" ? LIFTS[nextStep.id].base : null) : endBase;
+          if (arrivingBase) facility = Object.values(FACILITIES).find(f => f.atBases.includes(arrivingBase));
+        }
+
+        if (!facility) continue;
+
+        if (!lunchTaken && facility.hasFood && adjusted.cumTime >= lunchAfterMinutes) {
+          result.push({ type:"break", breakType:"lunch", name:`Lunch at ${facility.name}`, time: LUNCH_DURATION, cumTime: adjusted.cumTime + LUNCH_DURATION });
+          cumAdjust += LUNCH_DURATION;
+          lunchTaken = true;
+          timeSinceBathroom = 0;
+        } else if (bathroomEnabled && facility.hasBathroom && timeSinceBathroom >= bathroomInterval) {
+          result.push({ type:"break", breakType:"bathroom", name:`Bathroom break at ${facility.name}`, time: BATHROOM_DURATION, cumTime: adjusted.cumTime + BATHROOM_DURATION });
+          cumAdjust += BATHROOM_DURATION;
+          timeSinceBathroom = 0;
+        }
+      }
+
+      return { steps: result, addedTime: cumAdjust };
+    }
+
+    /* ================================================================
+       REACT COMPONENTS
+       ================================================================ */
+
+    function TrailMap({ route, hoveredRunId, onHoverRun, activeStepIds }) {
+      const steps = route?.steps || [];
+      // Render inactive paths first (under), then active paths (over) so the active section pops on top
+      const inactive = [];
+      const active = [];
+      steps.forEach((step, i) => {
+        const isActive = activeStepIds && activeStepIds.has(step.id);
+        (isActive ? active : inactive).push({ step, i });
+      });
+
+      const renderStep = ({ step, i }, isActive) => {
+        if (step.type === 'run') {
+          const pts = RUN_COORDS[step.id];
+          if (!pts || pts.length < 2) return null;
+          const isHovered = isActive && hoveredRunId === step.id;
+          const color = step.difficulty === 'black' ? '#e2e8f0' : (DIFF_META[step.difficulty]?.color || '#888');
+          return (
+            <polyline key={`r-${i}`}
+              points={pts.map(([x,y]) => `${x},${y}`).join(' ')}
+              fill="none"
+              stroke={isActive ? color : '#64748b'}
+              strokeWidth={isActive ? (isHovered ? 12 : 7) : 3}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={isActive ? (isHovered ? 1 : 0.9) : 0.22}
+              style={{pointerEvents: isActive ? 'stroke' : 'none', cursor: isActive ? 'pointer' : 'default', filter: isHovered ? `drop-shadow(0 0 8px ${color})` : 'none', transition:'stroke-width 0.15s ease, opacity 0.15s ease'}}
+              onMouseEnter={isActive ? () => onHoverRun(step.id) : undefined}
+              onMouseLeave={isActive ? () => onHoverRun(null) : undefined}
+            />
+          );
+        } else if (step.type === 'lift') {
+          const pts = LIFT_COORDS[step.id];
+          if (!pts || pts.length < 2) return null;
+          const isHovered = isActive && hoveredRunId === step.id;
+          return (
+            <polyline key={`l-${i}`}
+              points={pts.map(([x,y]) => `${x},${y}`).join(' ')}
+              fill="none"
+              stroke={isActive ? '#fbbf24' : '#64748b'}
+              strokeWidth={isActive ? (isHovered ? 9 : 5) : 3}
+              strokeDasharray="24,12"
+              strokeLinecap="round"
+              opacity={isActive ? (isHovered ? 1 : 0.85) : 0.22}
+              style={{pointerEvents: isActive ? 'stroke' : 'none', cursor: isActive ? 'pointer' : 'default', filter: isHovered ? 'drop-shadow(0 0 8px #fbbf24)' : 'none', transition:'stroke-width 0.15s ease, opacity 0.15s ease'}}
+              onMouseEnter={isActive ? () => onHoverRun(step.id) : undefined}
+              onMouseLeave={isActive ? () => onHoverRun(null) : undefined}
+            />
+          );
+        }
+        return null;
+      };
+
+      return (
+        <div className="rounded-xl overflow-hidden border border-slate-700 bg-mountain-900 flex items-center justify-center h-[48vh] lg:h-auto">
+          <div style={{position:'relative', aspectRatio:'2600 / 1467', maxWidth:'100%', maxHeight:'100%', width:'100%'}}>
+            <img src="trail-map.jpg" alt="Bald Mountain Trail Map"
+              className="w-full h-full" style={{display:'block', objectFit:'contain'}} />
+            <svg
+              style={{position:'absolute',top:0,left:0,width:'100%',height:'100%'}}
+              viewBox="0 0 2600 1467"
+              preserveAspectRatio="none"
+            >
+              {inactive.map(item => renderStep(item, false))}
+              {active.map(item => renderStep(item, true))}
+            </svg>
+          </div>
+        </div>
+      );
+    }
+
+    function MapEditor({ onClose }) {
+      const allRuns = useMemo(() => Object.values(RUNS).sort((a,b) => a.name.localeCompare(b.name)), []);
+      const allLifts = useMemo(() => Object.values(LIFTS).sort((a,b) => a.name.localeCompare(b.name)), []);
+
+      const [selectedId, setSelectedId] = useState(allRuns[0]?.id || '');
+      const [runCoords, setRunCoords] = useState({...RUN_COORDS});
+      const [liftCoords, setLiftCoords] = useState({...LIFT_COORDS});
+
+      const isLift = !!LIFTS[selectedId];
+      const currentPts = (isLift ? liftCoords : runCoords)[selectedId] || [];
+
+      const handleMapClick = (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = Math.round((e.clientX - rect.left) / rect.width * 2600);
+        const y = Math.round((e.clientY - rect.top) / rect.height * 1467);
+        if (isLift) {
+          setLiftCoords(prev => ({...prev, [selectedId]: [...(prev[selectedId]||[]), [x,y]]}));
+        } else {
+          setRunCoords(prev => ({...prev, [selectedId]: [...(prev[selectedId]||[]), [x,y]]}));
+        }
+      };
+
+      const handleUndo = () => {
+        if (isLift) {
+          setLiftCoords(prev => {const a=[...(prev[selectedId]||[])]; a.pop(); return {...prev,[selectedId]:a};});
+        } else {
+          setRunCoords(prev => {const a=[...(prev[selectedId]||[])]; a.pop(); return {...prev,[selectedId]:a};});
+        }
+      };
+
+      const handleClear = () => {
+        if (isLift) setLiftCoords(prev => ({...prev,[selectedId]:[]}));
+        else setRunCoords(prev => ({...prev,[selectedId]:[]}));
+      };
+
+      const jsonOutput = `const RUN_COORDS = ${JSON.stringify(runCoords, null, 2)};\n\nconst LIFT_COORDS = ${JSON.stringify(liftCoords, null, 2)};`;
+
+      const definedRunPaths = Object.entries(runCoords).filter(([,pts])=>pts.length>=2);
+      const definedLiftPaths = Object.entries(liftCoords).filter(([,pts])=>pts.length>=2);
+
+      const definedCount = Object.values(runCoords).filter(p=>p.length>=2).length + Object.values(liftCoords).filter(p=>p.length>=2).length;
+      const totalCount = allRuns.length + allLifts.length;
+
+      return (
+        <div style={{position:'fixed',inset:0,zIndex:1000,background:'#0f172a',display:'flex',flexDirection:'column'}}>
+          {/* Toolbar */}
+          <div style={{padding:'10px 14px',background:'#1e293b',borderBottom:'1px solid #334155',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap',flexShrink:0}}>
+            <span style={{fontWeight:700,color:'#f1f5f9',fontSize:14}}>Map Editor</span>
+            <span style={{color:'#64748b',fontSize:12}}>{definedCount}/{totalCount} defined</span>
+            <select value={selectedId} onChange={e=>setSelectedId(e.target.value)}
+              style={{background:'#334155',color:'white',padding:'4px 8px',borderRadius:6,border:'1px solid #475569',fontSize:13,maxWidth:280}}>
+              <optgroup label="── Runs ──">
+                {allRuns.map(r=>(
+                  <option key={r.id} value={r.id}>
+                    {runCoords[r.id]?.length>=2?'✓ ':'  '}{r.name} [{DIFF_META[r.difficulty]?.label}]
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="── Lifts ──">
+                {allLifts.map(l=>(
+                  <option key={l.id} value={l.id}>
+                    {liftCoords[l.id]?.length>=2?'✓ ':'  '}{l.name}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <span style={{color:'#94a3b8',fontSize:12}}>{currentPts.length} pts</span>
+            <button onClick={handleUndo} disabled={currentPts.length===0}
+              style={{padding:'4px 10px',background:'#334155',color:'white',borderRadius:6,border:'1px solid #475569',cursor:'pointer',fontSize:13,opacity:currentPts.length===0?0.4:1}}>Undo</button>
+            <button onClick={handleClear} disabled={currentPts.length===0}
+              style={{padding:'4px 10px',background:'#7f1d1d',color:'white',borderRadius:6,border:'none',cursor:'pointer',fontSize:13,opacity:currentPts.length===0?0.4:1}}>Clear</button>
+            <span style={{color:'#475569',fontSize:12,marginLeft:4}}>Click map to add waypoints · {isLift?'Lift (dashed)':'Run (solid)'}</span>
+            <button onClick={onClose}
+              style={{marginLeft:'auto',padding:'4px 12px',background:'#1d4ed8',color:'white',borderRadius:6,border:'none',cursor:'pointer',fontSize:13}}>Done (Shift+E)</button>
+          </div>
+
+          {/* Map + JSON side panel */}
+          <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+            {/* Clickable map */}
+            <div style={{flex:1,overflow:'auto',position:'relative',cursor:'crosshair'}} onClick={handleMapClick}>
+              <img src="trail-map.jpg" alt="Trail Map" style={{width:'100%',display:'block',userSelect:'none'}} draggable={false} />
+              <svg style={{position:'absolute',top:0,left:0,width:'100%',height:'100%',pointerEvents:'none'}}
+                viewBox="0 0 2600 1467" preserveAspectRatio="none">
+                {/* All defined run paths (faint) */}
+                {definedRunPaths.map(([id,pts])=>{
+                  const isSel = id===selectedId;
+                  const color = DIFF_META[RUNS[id]?.difficulty]?.color||'#888';
+                  return <polyline key={id} points={pts.map(([x,y])=>`${x},${y}`).join(' ')}
+                    fill="none" stroke={isSel?'#fff':color} strokeWidth={isSel?6:3}
+                    strokeLinecap="round" strokeLinejoin="round" opacity={isSel?1:0.45}/>;
+                })}
+                {/* All defined lift paths (faint dashed) */}
+                {definedLiftPaths.map(([id,pts])=>{
+                  const isSel = id===selectedId;
+                  return <polyline key={id} points={pts.map(([x,y])=>`${x},${y}`).join(' ')}
+                    fill="none" stroke={isSel?'#fff':'#fbbf24'} strokeWidth={isSel?6:3}
+                    strokeDasharray="20,8" strokeLinecap="round" opacity={isSel?1:0.45}/>;
+                })}
+                {/* Current item's waypoint dots */}
+                {currentPts.map(([x,y],i)=>(
+                  <g key={i}>
+                    <circle cx={x} cy={y} r={10} fill="#f59e0b" stroke="#fff" strokeWidth={2.5}/>
+                    <text x={x} y={y+4} textAnchor="middle" fontSize={11} fill="#000" fontWeight="bold">{i+1}</text>
+                  </g>
+                ))}
+              </svg>
+            </div>
+
+            {/* JSON output panel */}
+            <div style={{width:310,background:'#1e293b',borderLeft:'1px solid #334155',display:'flex',flexDirection:'column',padding:12,gap:8,flexShrink:0}}>
+              <div style={{color:'#94a3b8',fontSize:11,lineHeight:'1.5'}}>
+                Copy this → replace the <code style={{color:'#86efac'}}>RUN_COORDS</code> / <code style={{color:'#86efac'}}>LIFT_COORDS</code> lines in index.html
+              </div>
+              <textarea readOnly value={jsonOutput}
+                onClick={e=>e.target.select()}
+                style={{flex:1,background:'#0f172a',color:'#86efac',fontFamily:'monospace',fontSize:10.5,padding:8,border:'1px solid #334155',borderRadius:6,resize:'none',lineHeight:'1.4'}}/>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function Header() {
+      return (
+        <div className="bg-mountain-800 border-b border-slate-700 px-6 py-4">
+          <h1 className="text-2xl font-bold tracking-tight">
+            <span className="text-blue-400">Baldy</span> Route Finder
+          </h1>
+          <p className="text-slate-400 text-sm mt-1">Sun Valley — Bald Mountain</p>
+        </div>
+      );
+    }
+
+    function RouteConfig({ onGenerate }) {
+      const [diff, setDiff] = useState("greens-and-blues");
+      const [hours, setHours] = useState(3);
+      const [startBase, setStartBase] = useState("river-run-base");
+      const [bathroomEnabled, setBathroomEnabled] = useState(false);
+      const [bathroomInterval, setBathroomInterval] = useState(90);
+      const [lunchEnabled, setLunchEnabled] = useState(false);
+
+      const handleGenerate = () => {
+        onGenerate({ diff, totalMinutes: hours * 60, startBase, bathroomEnabled, bathroomInterval, lunchEnabled });
+      };
+
+      return (
+        <div className="bg-mountain-800 rounded-xl p-5 border border-slate-700">
+          <h2 className="text-lg font-semibold mb-4">Plan your day</h2>
+
+          {/* Difficulty preference */}
+          <label className="block text-sm text-slate-400 mb-2">What runs do you like?</label>
+          <div className="grid grid-cols-1 gap-2 mb-5">
+            {Object.entries(PREF_LABELS).map(([key, label]) => (
+              <button key={key} onClick={() => setDiff(key)}
+                className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  diff === key
+                    ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                    : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Duration */}
+          <label className="block text-sm text-slate-400 mb-2">How long do you want to ski?</label>
+          <div className="flex items-center gap-3 mb-5">
+            <input type="range" min="1" max="8" step="0.5" value={hours}
+              onChange={e => setHours(parseFloat(e.target.value))}
+              className="flex-1 accent-blue-500" />
+            <span className="text-lg font-semibold w-20 text-right">
+              {hours % 1 === 0 ? hours : hours.toFixed(1)} hr{hours !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          {/* Start base */}
+          <label className="block text-sm text-slate-400 mb-2">Starting from?</label>
+          <select value={startBase} onChange={e => setStartBase(e.target.value)}
+            className="w-full bg-slate-700 text-white rounded-lg px-3 py-2 mb-5 text-sm border border-slate-600">
+            <option value="river-run-base">River Run Base</option>
+            <option value="warm-springs-base">Warm Springs Base</option>
+          </select>
+
+          {/* Breaks */}
+          <label className="block text-sm text-slate-400 mb-2">Breaks</label>
+          <div className="space-y-3 mb-5">
+            <div>
+              <label className="flex items-center gap-2 text-sm text-slate-300">
+                <input type="checkbox" checked={bathroomEnabled}
+                  onChange={e => setBathroomEnabled(e.target.checked)}
+                  className="accent-blue-500 w-4 h-4" />
+                Bathroom breaks
+              </label>
+              {bathroomEnabled && (
+                <div className="flex items-center gap-3 mt-2 pl-6">
+                  <input type="range" min="30" max="180" step="15" value={bathroomInterval}
+                    onChange={e => setBathroomInterval(parseInt(e.target.value))}
+                    className="flex-1 accent-blue-500" />
+                  <span className="text-sm text-slate-300 w-28 text-right">every {bathroomInterval} min</span>
+                </div>
+              )}
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input type="checkbox" checked={lunchEnabled}
+                onChange={e => setLunchEnabled(e.target.checked)}
+                className="accent-blue-500 w-4 h-4" />
+              Lunch break (~35 min, around midday)
+            </label>
+          </div>
+
+          {/* Generate */}
+          <button onClick={handleGenerate}
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition-colors text-base">
+            Generate my route
+          </button>
+        </div>
+      );
+    }
+
+    function RouteStats({ stats }) {
+      return (
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="bg-slate-700/50 rounded-lg p-3 text-center">
+            <div className="text-xl font-bold text-blue-400">{stats.runsSkied}</div>
+            <div className="text-xs text-slate-400">runs skied</div>
+          </div>
+          <div className="bg-slate-700/50 rounded-lg p-3 text-center">
+            <div className="text-xl font-bold text-blue-400">{stats.liftsRidden}</div>
+            <div className="text-xs text-slate-400">lifts ridden</div>
+          </div>
+          <div className="bg-slate-700/50 rounded-lg p-3 text-center">
+            <div className="text-xl font-bold text-blue-400">{Math.round(stats.totalTime)} min</div>
+            <div className="text-xs text-slate-400">total time</div>
+          </div>
+        </div>
+      );
+    }
+
+    function RouteDisplay({ result, hoveredRunId, onHoverRun, sections, stepToSection, activeSectionIdx, setActiveSectionIdx }) {
+      if (!result) return null;
+      const totalSections = sections.length;
+      const canPrev = activeSectionIdx > 0;
+      const canNext = activeSectionIdx < totalSections - 1;
+
+      const formatTime = (mins) => {
+        const h = Math.floor(mins / 60);
+        const m = Math.round(mins % 60);
+        if (h === 0) return `${m}m`;
+        return `${h}h ${m}m`;
+      };
+
+      return (
+        <div className="bg-mountain-800 rounded-xl p-5 border border-slate-700 fade-in">
+          <h2 className="text-lg font-semibold mb-3">Your route</h2>
+          <RouteStats stats={result.stats} />
+
+          {/* Difficulty breakdown */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {Object.entries(result.stats.diffCounts).sort((a,b) => (DIFF_META[a[0]]?.sortOrder||0) - (DIFF_META[b[0]]?.sortOrder||0)).map(([diff, count]) => {
+              const meta = DIFF_META[diff];
+              return (
+                <span key={diff} className="text-xs px-2 py-1 rounded-md bg-slate-700/60 text-slate-300 flex items-center gap-1">
+                  <span style={{color: diff==='black' ? '#e2e8f0' : meta.color}}>{meta.icon}</span>
+                  {count} {meta.label.toLowerCase()}{count > 1 ? 's' : ''}
+                </span>
+              );
+            })}
+          </div>
+
+          {/* Section navigation header */}
+          {totalSections > 0 && (
+            <div className="flex items-center justify-between mb-3 px-1">
+              <button onClick={() => canPrev && setActiveSectionIdx(activeSectionIdx - 1)}
+                disabled={!canPrev}
+                className="text-xs px-3 py-1.5 rounded-md bg-slate-700 hover:bg-slate-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed font-medium">
+                ‹ Prev
+              </button>
+              <div className="text-sm font-semibold text-slate-300">
+                Section {activeSectionIdx + 1} of {totalSections}
+              </div>
+              <button onClick={() => canNext && setActiveSectionIdx(activeSectionIdx + 1)}
+                disabled={!canNext}
+                className="text-xs px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed font-medium">
+                Next ›
+              </button>
+            </div>
+          )}
+
+          {/* Step-by-step itinerary */}
+          <div className="space-y-1 max-h-[500px] overflow-y-auto pr-1">
+            {result.steps.map((step, i) => {
+              const stepSectionIdx = stepToSection?.get(i);
+              const inActiveSection = stepSectionIdx === activeSectionIdx;
+              const isHovered = inActiveSection && hoveredRunId !== null && step.id === hoveredRunId;
+              const diffColor = step.type === 'lift' ? '#dc2626' : step.type === 'break' ? '#f59e0b' : (step.difficulty === 'black' ? '#334155' : (DIFF_META[step.difficulty]?.color || '#666'));
+              const glowColor = step.type === 'lift' ? 'rgba(220,38,38,0.4)' : step.type === 'break' ? 'rgba(245,158,11,0.4)' : (step.difficulty === 'black' ? 'rgba(226,232,240,0.3)' : (DIFF_META[step.difficulty]?.color || '#666') + '55');
+              const showDivider = step.type === 'lift' && i !== 0;
+
+              return (
+                <React.Fragment key={i}>
+                  {showDivider && <div className="border-t border-slate-700/50 my-2" />}
+                <div
+                  onClick={() => stepSectionIdx != null && setActiveSectionIdx(stepSectionIdx)}
+                  onMouseEnter={() => inActiveSection && onHoverRun(step.id)}
+                  onMouseLeave={() => inActiveSection && onHoverRun(null)}
+                  className={`flex items-center gap-3 py-2 px-3 rounded-lg step-hover cursor-pointer ${
+                    step.type === 'lift' ? 'bg-slate-700/30' : step.type === 'break' ? 'bg-amber-900/20' : 'bg-slate-800/50'
+                  }`}
+                  style={isHovered ? {
+                    background: step.type === 'lift' ? 'rgba(220,38,38,0.15)' : step.type === 'break' ? 'rgba(245,158,11,0.15)' : `${DIFF_META[step.difficulty]?.color || '#666'}22`,
+                    boxShadow: `0 0 16px 4px ${glowColor}, inset 0 0 0 1px ${DIFF_META[step.difficulty]?.color || diffColor}66`,
+                    transform: 'scale(1.03)',
+                    zIndex: 10,
+                    position: 'relative',
+                  } : (inActiveSection ? {} : { opacity: 0.4 })}>
+                  {/* Step number */}
+                  <div className="w-5 text-xs font-bold text-slate-600 flex-shrink-0 text-center">
+                    {i + 1}
+                  </div>
+
+                  {/* Icon */}
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{
+                    background: diffColor,
+                    color: '#fff',
+                    boxShadow: isHovered ? `0 0 10px 3px ${glowColor}` : 'none',
+                    transition: 'box-shadow 0.2s ease',
+                  }}>
+                    {step.type === 'lift' ? '▲' : step.type === 'break' ? (step.breakType === 'lunch' ? '🍔' : '🚻') : step.diffIcon}
+                  </div>
+
+                  {/* Name & details */}
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-sm font-medium leading-snug transition-colors ${isHovered ? 'text-white' : ''}`}>
+                      {step.type === 'lift' ? `\u{1F6A0} ${step.name}` : step.name}
+                    </div>
+                    {step.type === 'run' && (
+                      <div className={`text-xs transition-colors ${isHovered ? 'text-slate-300' : 'text-slate-500'}`}>{step.area}</div>
+                    )}
+                  </div>
+
+                  {/* Time */}
+                  <div className="text-xs text-slate-400 flex-shrink-0 text-right">
+                    <div>{step.time} min</div>
+                    <div className="text-slate-600">{formatTime(step.cumTime)}</div>
+                  </div>
+                </div>
+                </React.Fragment>
+              );
+            })}
+          </div>
+
+          {/* End info */}
+          <div className="mt-4 pt-3 border-t border-slate-700 text-sm text-slate-400">
+            Ending at <span className="text-white font-medium">{BASES[result.stats.endBase]?.name || result.stats.endBase}</span>
+            {' '}&middot; Total: {formatTime(result.stats.totalTime)} ({Math.round(result.stats.totalSkiTime)} min skiing, {Math.round(result.stats.totalLiftTime)} min on lifts)
+          </div>
+        </div>
+      );
+    }
+
+    function RunSearch() {
+      const [query, setQuery] = useState("");
+      const [filterDiff, setFilterDiff] = useState("all");
+      const [expanded, setExpanded] = useState(false);
+
+      const allRuns = useMemo(() =>
+        Object.values(RUNS).sort((a,b) => a.name.localeCompare(b.name)),
+      []);
+
+      const filtered = useMemo(() => {
+        return allRuns.filter(r => {
+          const matchesQuery = !query || r.name.toLowerCase().includes(query.toLowerCase());
+          const matchesDiff = filterDiff === "all" || r.difficulty === filterDiff;
+          return matchesQuery && matchesDiff;
+        });
+      }, [allRuns, query, filterDiff]);
+
+      return (
+        <div className="bg-mountain-800 rounded-xl p-5 border border-slate-700">
+          <button onClick={() => setExpanded(e => !e)}
+            className="w-full flex items-center justify-between text-left">
+            <h2 className="text-lg font-semibold">Browse runs</h2>
+            <span className="text-xs text-slate-400 flex items-center gap-1.5">
+              {expanded ? 'Hide' : `${allRuns.length} runs`}
+              <span style={{display:'inline-block', transition:'transform 0.2s ease', transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)'}}>▾</span>
+            </span>
+          </button>
+
+          {expanded && (
+            <div className="mt-3 fade-in">
+              <input type="text" placeholder="Search runs..." value={query}
+                onChange={e => setQuery(e.target.value)}
+                className="w-full bg-slate-700 text-white rounded-lg px-3 py-2 mb-3 text-sm border border-slate-600 placeholder-slate-500" />
+
+              <div className="flex gap-2 mb-3 flex-wrap">
+                {[["all","All"],["green","Green"],["blue","Blue"],["black","Black"],["double-black","2xBlack"]].map(([k,l]) => (
+                  <button key={k} onClick={() => setFilterDiff(k)}
+                    className={`text-xs px-2 py-1 rounded-md transition-all ${
+                      filterDiff === k ? 'bg-blue-600 text-white' : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700'
+                    }`}>{l}</button>
+                ))}
+              </div>
+
+              <div className="space-y-1 max-h-[350px] overflow-y-auto pr-1">
+                {filtered.map(run => {
+                  const meta = DIFF_META[run.difficulty];
+                  return (
+                    <div key={run.id} className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-slate-700/40">
+                      <span style={{color: run.difficulty==='black' ? '#e2e8f0' : meta.color, fontSize:'12px'}}>{meta.icon}</span>
+                      <span className="text-sm flex-1">{run.name}</span>
+                      <span className="text-xs text-slate-500">{run.area}</span>
+                    </div>
+                  );
+                })}
+                {filtered.length === 0 && <div className="text-sm text-slate-500 py-4 text-center">No runs found</div>}
+              </div>
+              <div className="text-xs text-slate-600 mt-2">{filtered.length} of {allRuns.length} runs</div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function App() {
+      const [routeResult, setRouteResult] = useState(null);
+      const [hoveredRunId, setHoveredRunId] = useState(null);
+      const [showEditor, setShowEditor] = useState(false);
+      const [activeSectionIdx, setActiveSectionIdx] = useState(0);
+
+      useEffect(() => {
+        const handleKey = (e) => {
+          if (e.shiftKey && e.key === 'E') setShowEditor(prev => !prev);
+        };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
+      }, []);
+
+      // Group steps into sections: each lift starts a new section, subsequent runs belong to it
+      const sections = useMemo(() => {
+        if (!routeResult) return [];
+        const segs = [];
+        let cur = null;
+        routeResult.steps.forEach((step, i) => {
+          if (step.type === 'lift') {
+            if (cur) segs.push(cur);
+            cur = { liftStep: step, stepIndices: [i], stepIds: new Set([step.id]) };
+          } else if (cur) {
+            cur.stepIndices.push(i);
+            cur.stepIds.add(step.id);
+          }
+        });
+        if (cur) segs.push(cur);
+        return segs;
+      }, [routeResult]);
+
+      // Map each step index to its section index
+      const stepToSection = useMemo(() => {
+        const m = new Map();
+        sections.forEach((seg, segIdx) => {
+          seg.stepIndices.forEach(stepIdx => m.set(stepIdx, segIdx));
+        });
+        return m;
+      }, [sections]);
+
+      const activeStepIds = sections[activeSectionIdx]?.stepIds || new Set();
+
+      const handleGenerate = useCallback(({ diff, totalMinutes, startBase, bathroomEnabled, bathroomInterval, lunchEnabled }) => {
+        const result = generateRoute(diff, totalMinutes, startBase);
+        const { steps: stepsWithBreaks, addedTime } = insertBreaks(result.steps, result.stats.endBase, { bathroomEnabled, bathroomInterval, lunchEnabled });
+        setRouteResult({
+          steps: stepsWithBreaks,
+          stats: { ...result.stats, totalTime: result.stats.totalTime + addedTime }
+        });
+        setActiveSectionIdx(0);
+      }, []);
+
+      return (
+        <div className="min-h-screen">
+          {showEditor && <MapEditor onClose={() => setShowEditor(false)} />}
+          <Header />
+          <div className="max-w-7xl mx-auto px-4 py-6">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+              {/* Left: Trail map with route overlay. Sticky on mobile once a route exists, so the map stays visible while scrolling the route list. */}
+              <div className={`lg:col-span-3 ${routeResult ? 'sticky top-0 z-20 lg:static lg:top-auto lg:z-auto' : ''}`}>
+                <TrailMap route={routeResult} hoveredRunId={hoveredRunId} onHoverRun={setHoveredRunId} activeStepIds={activeStepIds} />
+              </div>
+
+              {/* Right: Controls + Route */}
+              <div className="lg:col-span-2 space-y-5">
+                <RouteConfig onGenerate={handleGenerate} />
+                <RouteDisplay
+                  result={routeResult}
+                  hoveredRunId={hoveredRunId}
+                  onHoverRun={setHoveredRunId}
+                  sections={sections}
+                  stepToSection={stepToSection}
+                  activeSectionIdx={activeSectionIdx}
+                  setActiveSectionIdx={setActiveSectionIdx}
+                />
+                <RunSearch />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
