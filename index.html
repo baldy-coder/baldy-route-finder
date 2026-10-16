@@ -2108,6 +2108,16 @@ const LIFT_COORDS = {
           let bestRun = null;
           let bestRunScore = -Infinity;
 
+          // Stuck-loop detector: how dominant has one area been over the last 6 runs?
+          // (regardless of difficulty preference, we need to escape eventually)
+          const recentAreas = route.filter(s => s.type === "run").slice(-6).map(s => s.area);
+          let dominantArea = null, dominantCount = 0;
+          if (recentAreas.length >= 4) {
+            const counts = {};
+            for (const a of recentAreas) counts[a] = (counts[a] || 0) + 1;
+            for (const a in counts) if (counts[a] > dominantCount) { dominantCount = counts[a]; dominantArea = a; }
+          }
+
           for (const rId of availableRunIds) {
             const run = RUNS[rId];
             if (!run) continue;
@@ -2119,7 +2129,12 @@ const LIFT_COORDS = {
             const variety = 1 / (1 + visits * 0.3); // stronger area penalty
             const jitter = Math.random() * 0.12;
 
-            const score = diffScore * 0.40 + freshness * 0.28 + variety * 0.20 + jitter;
+            // Escape hatch: if recent runs have been stuck circling one area, strongly
+            // favor any run that leaves it — regardless of difficulty preference —
+            // to prevent infinite loops (e.g. "just-blues" trapped at Frenchman's Base)
+            const stuckEscape = (dominantCount >= 4 && run.area !== dominantArea) ? (dominantCount - 3) * 0.3 : 0;
+
+            const score = diffScore * 0.40 + freshness * 0.28 + variety * 0.20 + jitter + stuckEscape;
             if (score > bestRunScore) { bestRunScore = score; bestRun = run; }
           }
 
