@@ -2028,12 +2028,27 @@ const LIFT_COORDS = {
       "all":              "Green, blue & black",
     };
 
+    // Bonus applied to a candidate run's score based on today's groomed-trail data
+    const GROOM_PREF_BONUS = {
+      "no-preference":   { groomed: 0,     ungroomed: 0     },
+      "groomed-only":     { groomed: 0.35,  ungroomed: -0.15 },
+      "moguls-preferred": { groomed: -0.15, ungroomed: 0.35  },
+    };
+
+    const GROOM_PREF_LABELS = {
+      "no-preference":   "No preference",
+      "groomed-only":     "Prefer groomed runs",
+      "moguls-preferred": "Prefer moguls / bumps",
+    };
+
     /* ================================================================
        ROUTE GENERATION ALGORITHM
        ================================================================ */
 
-    function generateRoute(diffPref, totalMinutes, startBase) {
+    function generateRoute(diffPref, totalMinutes, startBase, groomPref, groomedRunIds) {
       const scores = PREF_SCORES[diffPref];
+      const groomBonus = GROOM_PREF_BONUS[groomPref] || GROOM_PREF_BONUS["no-preference"];
+      const groomedSet = groomedRunIds || new Set();
       const route = [];
       let clock = 0;
       let currentBase = startBase;
@@ -2133,8 +2148,9 @@ const LIFT_COORDS = {
             // favor any run that leaves it — regardless of difficulty preference —
             // to prevent infinite loops (e.g. "just-blues" trapped at Frenchman's Base)
             const stuckEscape = (dominantCount >= 4 && run.area !== dominantArea) ? (dominantCount - 3) * 0.3 : 0;
+            const groomScore = groomedSet.has(rId) ? groomBonus.groomed : groomBonus.ungroomed;
 
-            const score = diffScore * 0.40 + freshness * 0.28 + variety * 0.20 + jitter + stuckEscape;
+            const score = diffScore * 0.40 + freshness * 0.28 + variety * 0.20 + jitter + stuckEscape + groomScore;
             if (score > bestRunScore) { bestRunScore = score; bestRun = run; }
           }
 
@@ -2480,16 +2496,17 @@ const LIFT_COORDS = {
       );
     }
 
-    function RouteConfig({ onGenerate }) {
+    function RouteConfig({ onGenerate, groomedRunIds, groomedUpdatedAt }) {
       const [diff, setDiff] = useState("greens-and-blues");
       const [hours, setHours] = useState(3);
       const [startBase, setStartBase] = useState("river-run-base");
+      const [groomPref, setGroomPref] = useState("no-preference");
       const [bathroomEnabled, setBathroomEnabled] = useState(false);
       const [bathroomInterval, setBathroomInterval] = useState(90);
       const [lunchEnabled, setLunchEnabled] = useState(false);
 
       const handleGenerate = () => {
-        onGenerate({ diff, totalMinutes: hours * 60, startBase, bathroomEnabled, bathroomInterval, lunchEnabled });
+        onGenerate({ diff, totalMinutes: hours * 60, startBase, groomPref, bathroomEnabled, bathroomInterval, lunchEnabled });
       };
 
       return (
@@ -2509,6 +2526,26 @@ const LIFT_COORDS = {
                 {label}
               </button>
             ))}
+          </div>
+
+          {/* Groomed vs moguls preference */}
+          <label className="block text-sm text-slate-400 mb-2">Groomed or moguls?</label>
+          <div className="grid grid-cols-1 gap-2 mb-2">
+            {Object.entries(GROOM_PREF_LABELS).map(([key, label]) => (
+              <button key={key} onClick={() => setGroomPref(key)}
+                className={`text-left px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                  groomPref === key
+                    ? 'bg-blue-600 text-white ring-2 ring-blue-400'
+                    : 'bg-slate-700/50 text-slate-300 hover:bg-slate-700'
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="text-xs text-slate-500 mb-5">
+            {groomedRunIds && groomedRunIds.size > 0
+              ? `${groomedRunIds.size} runs groomed today${groomedUpdatedAt ? ' · updated ' + new Date(groomedUpdatedAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : ''}`
+              : 'No grooming data available yet today'}
           </div>
 
           {/* Duration */}
@@ -2775,6 +2812,8 @@ const LIFT_COORDS = {
       const [hoveredRunId, setHoveredRunId] = useState(null);
       const [showEditor, setShowEditor] = useState(false);
       const [activeSectionIdx, setActiveSectionIdx] = useState(0);
+      const [groomedRunIds, setGroomedRunIds] = useState(new Set());
+      const [groomedUpdatedAt, setGroomedUpdatedAt] = useState(null);
 
       useEffect(() => {
         const handleKey = (e) => {
@@ -2782,6 +2821,18 @@ const LIFT_COORDS = {
         };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
+      }, []);
+
+      useEffect(() => {
+        fetch('groomed-today.json')
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (data && Array.isArray(data.groomedRunIds)) {
+              setGroomedRunIds(new Set(data.groomedRunIds));
+              setGroomedUpdatedAt(data.updatedAt || null);
+            }
+          })
+          .catch(() => {}); // no grooming data available — app works fine without it
       }, []);
 
       // Group steps into sections: each lift starts a new section, subsequent runs belong to it
@@ -2813,15 +2864,15 @@ const LIFT_COORDS = {
 
       const activeStepIds = sections[activeSectionIdx]?.stepIds || new Set();
 
-      const handleGenerate = useCallback(({ diff, totalMinutes, startBase, bathroomEnabled, bathroomInterval, lunchEnabled }) => {
-        const result = generateRoute(diff, totalMinutes, startBase);
+      const handleGenerate = useCallback(({ diff, totalMinutes, startBase, groomPref, bathroomEnabled, bathroomInterval, lunchEnabled }) => {
+        const result = generateRoute(diff, totalMinutes, startBase, groomPref, groomedRunIds);
         const { steps: stepsWithBreaks, addedTime } = insertBreaks(result.steps, result.stats.endBase, { bathroomEnabled, bathroomInterval, lunchEnabled });
         setRouteResult({
           steps: stepsWithBreaks,
           stats: { ...result.stats, totalTime: result.stats.totalTime + addedTime }
         });
         setActiveSectionIdx(0);
-      }, []);
+      }, [groomedRunIds]);
 
       return (
         <div className="min-h-screen">
@@ -2837,7 +2888,7 @@ const LIFT_COORDS = {
 
               {/* Right: Controls + Route */}
               <div className="lg:col-span-2 space-y-5">
-                <RouteConfig onGenerate={handleGenerate} />
+                <RouteConfig onGenerate={handleGenerate} groomedRunIds={groomedRunIds} groomedUpdatedAt={groomedUpdatedAt} />
                 <RouteDisplay
                   result={routeResult}
                   hoveredRunId={hoveredRunId}
