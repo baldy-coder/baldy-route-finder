@@ -2045,10 +2045,11 @@ const LIFT_COORDS = {
        ROUTE GENERATION ALGORITHM
        ================================================================ */
 
-    function generateRoute(diffPref, totalMinutes, startBase, groomPref, groomedRunIds) {
+    function generateRoute(diffPref, totalMinutes, startBase, groomPref, groomedRunIds, personalHistory) {
       const scores = PREF_SCORES[diffPref];
       const groomBonus = GROOM_PREF_BONUS[groomPref] || GROOM_PREF_BONUS["no-preference"];
       const groomedSet = groomedRunIds || new Set();
+      const history = personalHistory || {};
       const route = [];
       let clock = 0;
       let currentBase = startBase;
@@ -2150,7 +2151,13 @@ const LIFT_COORDS = {
             const stuckEscape = (dominantCount >= 4 && run.area !== dominantArea) ? (dominantCount - 3) * 0.3 : 0;
             const groomScore = groomedSet.has(rId) ? groomBonus.groomed : groomBonus.ungroomed;
 
-            const score = diffScore * 0.40 + freshness * 0.28 + variety * 0.20 + jitter + stuckEscape + groomScore;
+            // Personal history: boost runs you've liked, avoid ones you've disliked,
+            // and nudge toward runs you've never skied before (across all past days)
+            const runHist = history[rId];
+            const personalScore = runHist ? (runHist.feedback || 0) * 0.35 : 0;
+            const neverTriedBonus = (!runHist || !runHist.skiCount) ? 0.15 : 0;
+
+            const score = diffScore * 0.40 + freshness * 0.28 + variety * 0.20 + jitter + stuckEscape + groomScore + personalScore + neverTriedBonus;
             if (score > bestRunScore) { bestRunScore = score; bestRun = run; }
           }
 
@@ -2287,6 +2294,43 @@ const LIFT_COORDS = {
       }
 
       return { steps: result, addedTime: cumAdjust };
+    }
+
+    /* ================================================================
+       PERSONALIZATION — profile + per-run like/dislike history, saved
+       to this device's localStorage. No account/server involved.
+       ================================================================ */
+
+    const PROFILE_KEY = "baldy_profile";
+    const HISTORY_KEY = "baldy_run_history"; // { [runId]: { skiCount, feedback: -1|0|1 } }
+
+    function loadProfile() {
+      try {
+        const raw = localStorage.getItem(PROFILE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
+    }
+
+    function saveProfile(profile) {
+      try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch (e) {}
+    }
+
+    function loadRunHistory() {
+      try {
+        const raw = localStorage.getItem(HISTORY_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) { return {}; }
+    }
+
+    function saveRunHistory(history) {
+      try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch (e) {}
+    }
+
+    function greetingForHour(hour) {
+      if (hour < 5) return "Up late,";
+      if (hour < 12) return "Good morning,";
+      if (hour < 17) return "Good afternoon,";
+      return "Good evening,";
     }
 
     /* ================================================================
@@ -2485,13 +2529,54 @@ const LIFT_COORDS = {
       );
     }
 
-    function Header() {
+    function Header({ profile }) {
       return (
         <div className="bg-mountain-800 border-b border-slate-700 px-6 py-4">
           <h1 className="text-2xl font-bold tracking-tight">
             <span className="text-blue-400">Baldy</span> Route Finder
           </h1>
-          <p className="text-slate-400 text-sm mt-1">Sun Valley — Bald Mountain</p>
+          <p className="text-slate-400 text-sm mt-1">
+            {profile
+              ? `${greetingForHour(new Date().getHours())} ${profile.name}!`
+              : "Sun Valley — Bald Mountain"}
+          </p>
+        </div>
+      );
+    }
+
+    function WelcomeModal({ onComplete }) {
+      const [name, setName] = useState("");
+      const [username, setUsername] = useState("");
+
+      const canSubmit = name.trim().length > 0 && username.trim().length > 0;
+
+      const handleSubmit = () => {
+        if (!canSubmit) return;
+        onComplete({ name: name.trim(), username: username.trim().toLowerCase().replace(/\s+/g, "") });
+      };
+
+      return (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-mountain-800 rounded-xl p-6 border border-slate-700 max-w-sm w-full">
+            <h2 className="text-xl font-bold mb-1">Welcome to Baldy 🎿</h2>
+            <p className="text-sm text-slate-400 mb-5">Let's get you set up. This stays on your device only.</p>
+
+            <label className="block text-sm text-slate-400 mb-1">What's your first name?</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)}
+              placeholder="Otis"
+              className="w-full bg-slate-700 text-white rounded-lg px-3 py-2 mb-4 text-sm border border-slate-600 placeholder-slate-500" />
+
+            <label className="block text-sm text-slate-400 mb-1">Pick a username</label>
+            <input type="text" value={username} onChange={e => setUsername(e.target.value)}
+              placeholder="baldy-coder"
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+              className="w-full bg-slate-700 text-white rounded-lg px-3 py-2 mb-5 text-sm border border-slate-600 placeholder-slate-500" />
+
+            <button onClick={handleSubmit} disabled={!canSubmit}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold py-3 rounded-xl transition-colors text-base">
+              Let's ski
+            </button>
+          </div>
         </div>
       );
     }
@@ -2622,7 +2707,7 @@ const LIFT_COORDS = {
       );
     }
 
-    function RouteDisplay({ result, hoveredRunId, onHoverRun, sections, stepToSection, activeSectionIdx, setActiveSectionIdx }) {
+    function RouteDisplay({ result, hoveredRunId, onHoverRun, sections, stepToSection, activeSectionIdx, setActiveSectionIdx, runHistory, onSetFeedback }) {
       if (!result) return null;
       const totalSections = sections.length;
       const canPrev = activeSectionIdx > 0;
@@ -2729,6 +2814,20 @@ const LIFT_COORDS = {
                     <div>{step.time} min</div>
                     <div className="text-slate-600">{formatTime(step.cumTime)}</div>
                   </div>
+
+                  {/* Like / dislike */}
+                  {step.type === 'run' && (
+                    <div className="flex flex-col gap-0.5 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => onSetFeedback(step.id, 1)}
+                        className={`text-xs leading-none px-1 rounded ${runHistory?.[step.id]?.feedback === 1 ? 'opacity-100' : 'opacity-30 hover:opacity-70'}`}>
+                        👍
+                      </button>
+                      <button onClick={() => onSetFeedback(step.id, -1)}
+                        className={`text-xs leading-none px-1 rounded ${runHistory?.[step.id]?.feedback === -1 ? 'opacity-100' : 'opacity-30 hover:opacity-70'}`}>
+                        👎
+                      </button>
+                    </div>
+                  )}
                 </div>
                 </React.Fragment>
               );
@@ -2814,6 +2913,17 @@ const LIFT_COORDS = {
       const [activeSectionIdx, setActiveSectionIdx] = useState(0);
       const [groomedRunIds, setGroomedRunIds] = useState(new Set());
       const [groomedUpdatedAt, setGroomedUpdatedAt] = useState(null);
+      const [profile, setProfile] = useState(() => loadProfile());
+      const [runHistory, setRunHistory] = useState(() => loadRunHistory());
+
+      const handleSetFeedback = useCallback((runId, feedback) => {
+        setRunHistory(prev => {
+          const existing = prev[runId] || { skiCount: 0, feedback: 0 };
+          const next = { ...prev, [runId]: { ...existing, feedback: existing.feedback === feedback ? 0 : feedback } };
+          saveRunHistory(next);
+          return next;
+        });
+      }, []);
 
       useEffect(() => {
         const handleKey = (e) => {
@@ -2865,19 +2975,33 @@ const LIFT_COORDS = {
       const activeStepIds = sections[activeSectionIdx]?.stepIds || new Set();
 
       const handleGenerate = useCallback(({ diff, totalMinutes, startBase, groomPref, bathroomEnabled, bathroomInterval, lunchEnabled }) => {
-        const result = generateRoute(diff, totalMinutes, startBase, groomPref, groomedRunIds);
+        const result = generateRoute(diff, totalMinutes, startBase, groomPref, groomedRunIds, runHistory);
         const { steps: stepsWithBreaks, addedTime } = insertBreaks(result.steps, result.stats.endBase, { bathroomEnabled, bathroomInterval, lunchEnabled });
         setRouteResult({
           steps: stepsWithBreaks,
           stats: { ...result.stats, totalTime: result.stats.totalTime + addedTime }
         });
         setActiveSectionIdx(0);
-      }, [groomedRunIds]);
+
+        // Record that these runs have now been skied, so future routes can
+        // favor truly-untried runs for the "try something new" nudge
+        setRunHistory(prev => {
+          const next = { ...prev };
+          for (const step of result.steps) {
+            if (step.type !== 'run') continue;
+            const existing = next[step.id] || { skiCount: 0, feedback: 0 };
+            next[step.id] = { ...existing, skiCount: existing.skiCount + 1 };
+          }
+          saveRunHistory(next);
+          return next;
+        });
+      }, [groomedRunIds, runHistory]);
 
       return (
         <div className="min-h-screen">
+          {!profile && <WelcomeModal onComplete={(p) => { saveProfile(p); setProfile(p); }} />}
           {showEditor && <MapEditor onClose={() => setShowEditor(false)} />}
-          <Header />
+          <Header profile={profile} />
           <div className="max-w-7xl mx-auto px-4 py-6">
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
@@ -2897,6 +3021,8 @@ const LIFT_COORDS = {
                   stepToSection={stepToSection}
                   activeSectionIdx={activeSectionIdx}
                   setActiveSectionIdx={setActiveSectionIdx}
+                  runHistory={runHistory}
+                  onSetFeedback={handleSetFeedback}
                 />
                 <RunSearch />
               </div>
