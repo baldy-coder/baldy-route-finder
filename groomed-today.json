@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-11-26T21:34:50.145503+00:00",
+  "updatedAt": "2026-11-26T21:52:48.730379+00:00",
   "groomedRunIds": [
     "upper-college"
   ],
@@ -9,5 +9,9 @@
     "upper-limelight",
     "upper-river-run",
     "upper-warm-springs"
+  ],
+  "openLiftIds": [
+    "gondola",
+    "gondola-christmas"
   ]
 }
