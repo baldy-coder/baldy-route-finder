@@ -101,7 +101,7 @@
       "upper-river-run":   { id:"upper-river-run",   name:"Upper River Run",   difficulty:"black", area:"River Run", time:3, connectsTo:["mid-river-run"] },
       "mid-river-run":     { id:"mid-river-run",     name:"Mid River Run",     difficulty:"blue",  area:"River Run", time:2, connectsTo:["lower-river-run"] },
       "lower-river-run":   { id:"lower-river-run",   name:"Lower River Run",   difficulty:"green", area:"River Run", time:3, connectsTo:["river-run-base"] },
-      "roundhouse-slope":  { id:"roundhouse-slope",  name:"Roundhouse Slope",  difficulty:"green", area:"River Run", time:3, connectsTo:["mid-river-run","lower-river-run","olympic-lane"] },
+      "roundhouse-slope":  { id:"roundhouse-slope",  name:"Roundhouse Slope",  difficulty:"green", area:"River Run", time:3, connectsTo:["olympic-lane","lower-canyon"] },
       "gun-tower-lane":    { id:"gun-tower-lane",    name:"Gun Tower Lane",    difficulty:"green", area:"River Run", time:3, connectsTo:["seattle-ridge-express-base","lower-broadway"] },
       "upper-canyon":      { id:"upper-canyon",       name:"Upper Canyon",      difficulty:"blue",  area:"River Run", time:2, connectsTo:["lower-canyon"] },
       "lower-canyon":      { id:"lower-canyon",       name:"Lower Canyon",      difficulty:"blue",  area:"River Run", time:3, connectsTo:["lower-river-run"] },
@@ -164,7 +164,8 @@
       "frenchmans":        { id:"frenchmans",        name:"Frenchman's",                   time:6,  base:"frenchmans-base",           topRuns:["lower-college"] },
       "rr-lookout":        { id:"rr-lookout",        name:"River Run Express → Lookout",   time:14, base:"river-run-base",            topRuns:SUMMIT_RUNS },
       "gondola-christmas": { id:"gondola-christmas", name:"Gondola → Christmas Lift",      time:18, base:"river-run-base",            topRuns:SUMMIT_RUNS },
-      "broadway-express":  { id:"broadway-express",  name:"Broadway Express",              time:7,  base:"lower-broadway-base",       topRuns:["roundhouse-slope","upper-canyon","gun-tower-lane"] },
+      "gondola":           { id:"gondola",           name:"Gondola (get off before Christmas Lift)", time:9, base:"river-run-base",  topRuns:["roundhouse-slope"] },
+      "broadway-express":  { id:"broadway-express",  name:"Broadway Express",              time:7,  base:"lower-broadway-base",       topRuns:["upper-canyon","gun-tower-lane"] },
       "broadway-christmas":{ id:"broadway-christmas",name:"Broadway Express → Christmas Lift", time:15, base:"lower-broadway-base",  topRuns:SUMMIT_RUNS },
       "gondola-seattle":   { id:"gondola-seattle",   name:"Gondola → Gun Tower → Seattle Ridge", time:15, base:"river-run-base", topRuns:["gretchens-gold","muffys-medals","christins-silver","leigh-lane","sunrise-bowl"] },
       "seattle-ridge":     { id:"seattle-ridge",     name:"Seattle Ridge Express",         time:5,  base:"seattle-ridge-express-base", topRuns:["gretchens-gold","muffys-medals","christins-silver","leigh-lane","sunrise-bowl"] },
@@ -177,7 +178,7 @@
 
     const BASES = {
       "warm-springs-base":         { name:"Warm Springs Base",    lifts:["challenger-top","challenger-mid","flying-squirrel"] },
-      "river-run-base":            { name:"River Run Base",       lifts:["rr-lookout","gondola-christmas","gondola-seattle"] },
+      "river-run-base":            { name:"River Run Base",       lifts:["rr-lookout","gondola-christmas","gondola","gondola-seattle"] },
       "frenchmans-base":           { name:"Frenchman's Base",     lifts:["frenchmans"] },
       "lower-broadway-base":       { name:"Lower Broadway Base",  lifts:["broadway-express","broadway-christmas"] },
       "seattle-ridge-express-base":{ name:"Seattle Ridge Base",   lifts:["seattle-ridge"] },
