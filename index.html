@@ -143,7 +143,7 @@
       "christins-silver":{ id:"christins-silver", name:"Christin's Silver",difficulty:"green", area:"Seattle Ridge", time:3, connectsTo:["broadway"] },
       "leigh-lane":      { id:"leigh-lane",       name:"Leigh Lane",       difficulty:"green", area:"Seattle Ridge", time:3, connectsTo:["broadway"] },
       "broadway":        { id:"broadway",          name:"Broadway",         difficulty:"green", area:"Seattle Ridge", time:3, connectsTo:["mayday-express-base","seattle-ridge-express-base","lower-broadway"] },
-      "lower-broadway":  { id:"lower-broadway",    name:"Lower Broadway",   difficulty:"green", area:"Seattle Ridge", time:4, connectsTo:["lower-broadway-base"] },
+      "lower-broadway":  { id:"lower-broadway",    name:"Lower Broadway",   difficulty:"green", area:"Seattle Ridge", time:4, connectsTo:["lower-broadway-base"], mandatoryLift:"broadway-express" },
     };
 
     /* ================================================================
@@ -2058,6 +2058,7 @@ const LIFT_COORDS = {
       const route = [];
       let clock = 0;
       let currentBase = startBase;
+      let mandatoryNextLift = null; // set when the run that got us here requires a specific next lift (e.g. Lower Broadway → Broadway Express)
       const runHistory = {};   // runId → step when last skied
       const liftHistory = {};  // liftId → step when last used
       const areaVisits = {};   // area → visit count
@@ -2076,7 +2077,15 @@ const LIFT_COORDS = {
         let bestLift = null;
         let bestLiftScore = -1;
 
-        for (const liftId of base.lifts) {
+        // A mandatory next lift (e.g. Lower Broadway → Broadway Express) skips scoring entirely,
+        // as long as it's actually available at this base and there's time for it
+        if (mandatoryNextLift && base.lifts.includes(mandatoryNextLift)) {
+          const forced = LIFTS[mandatoryNextLift];
+          if (forced && forced.time <= remaining - 3) bestLift = forced;
+        }
+        mandatoryNextLift = null; // only applies to the very next lift pick
+
+        for (const liftId of (bestLift ? [] : base.lifts)) {
           const lift = LIFTS[liftId];
           if (!lift || lift.time > remaining - 3) continue;
           if (hasOpenData && !lift.topRuns.some(rId => openSet.has(rId))) continue; // every run up top is closed — don't ride it for nothing
@@ -2198,6 +2207,7 @@ const LIFT_COORDS = {
 
           // If time is getting low, or only bases available, head to base
           if (nextBases.length > 0 && (nextRuns.length === 0 || timeLeft < 14)) {
+            mandatoryNextLift = bestRun.mandatoryLift || null;
             // Pick the base with the freshest/most varied lift options
             if (nextBases.length === 1) {
               currentBase = nextBases[0];
@@ -2226,7 +2236,7 @@ const LIFT_COORDS = {
             // If time < 20 min, prefer runs that lead toward bases
             if (timeLeft < 20 && nextBases.length > 0) {
               // 60% chance to take the base, 40% to keep skiing
-              if (Math.random() < 0.6) { currentBase = nextBases[0]; break; }
+              if (Math.random() < 0.6) { mandatoryNextLift = bestRun.mandatoryLift || null; currentBase = nextBases[0]; break; }
             }
             availableRunIds = nextRuns;
           } else {
