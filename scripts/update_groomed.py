@@ -94,9 +94,11 @@ class TrailTableParser(HTMLParser):
         name = name_spans[-1][1]
         if not name:
             return
+        status_spans = self._cells[1]["spans"] if len(self._cells) > 1 else []
         groomed_spans = self._cells[2]["spans"]
+        is_open = any("mc__icon-open" in cls for cls, _ in status_spans)
         is_groomed = any("mc__icon-groomed" in cls for cls, _ in groomed_spans)
-        self.trails.append({"name": name, "groomed": is_groomed})
+        self.trails.append({"name": name, "open": is_open, "groomed": is_groomed})
 
 
 def extract_bald_mountain_section(html):
@@ -117,38 +119,44 @@ def fetch_report_html():
         return resp.read().decode("utf-8", errors="replace")
 
 
-def get_groomed_run_ids(html, our_runs_by_normalized_name):
+def get_trail_status(html, our_runs_by_normalized_name):
     section = extract_bald_mountain_section(html)
     parser = TrailTableParser()
     parser.feed(section)
 
-    groomed_ids, unmatched = [], []
+    groomed_ids, open_ids, unmatched = [], [], []
     for trail in parser.trails:
-        if not trail["groomed"]:
-            continue
         norm = normalize(trail["name"])
         run_id = NAME_ALIASES.get(norm) or our_runs_by_normalized_name.get(norm)
-        (groomed_ids if run_id else unmatched).append(run_id or trail["name"])
-    return groomed_ids, unmatched, len(parser.trails)
+        if not run_id:
+            if trail["groomed"] or trail["open"]:
+                unmatched.append(trail["name"])
+            continue
+        if trail["groomed"]:
+            groomed_ids.append(run_id)
+        if trail["open"]:
+            open_ids.append(run_id)
+    return groomed_ids, open_ids, unmatched, len(parser.trails)
 
 
 def main():
     our_runs = load_our_runs()
     html = fetch_report_html()
-    groomed_ids, unmatched, total = get_groomed_run_ids(html, our_runs)
+    groomed_ids, open_ids, unmatched, total = get_trail_status(html, our_runs)
 
     output = {
         "updatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "groomedRunIds": sorted(groomed_ids),
+        "openRunIds": sorted(open_ids),
     }
     out_path = os.path.join(REPO_ROOT, "groomed-today.json")
     with open(out_path, "w") as f:
         json.dump(output, f, indent=2)
         f.write("\n")
 
-    print(f"Parsed {total} trails, {len(groomed_ids)} groomed runs matched.")
+    print(f"Parsed {total} trails, {len(groomed_ids)} groomed runs matched, {len(open_ids)} open runs matched.")
     if unmatched:
-        print(f"Groomed on resort page but unrecognized (not in our RUNS data): {unmatched}")
+        print(f"Groomed/open on resort page but unrecognized (not in our RUNS data): {unmatched}")
     print(f"Wrote {out_path}")
 
 

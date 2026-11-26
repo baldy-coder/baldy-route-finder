@@ -2046,11 +2046,15 @@ const LIFT_COORDS = {
        ROUTE GENERATION ALGORITHM
        ================================================================ */
 
-    function generateRoute(diffPref, totalMinutes, startBase, groomPref, groomedRunIds, personalHistory) {
+    function generateRoute(diffPref, totalMinutes, startBase, groomPref, groomedRunIds, personalHistory, openRunIds) {
       const scores = PREF_SCORES[diffPref];
       const groomBonus = GROOM_PREF_BONUS[groomPref] || GROOM_PREF_BONUS["no-preference"];
       const groomedSet = groomedRunIds || new Set();
       const history = personalHistory || {};
+      // Hard filter: only skip closed runs if we actually have today's open-run data.
+      // An empty/missing set means "no data available" — don't restrict anything.
+      const openSet = openRunIds || new Set();
+      const hasOpenData = openSet.size > 0;
       const route = [];
       let clock = 0;
       let currentBase = startBase;
@@ -2075,6 +2079,7 @@ const LIFT_COORDS = {
         for (const liftId of base.lifts) {
           const lift = LIFTS[liftId];
           if (!lift || lift.time > remaining - 3) continue;
+          if (hasOpenData && !lift.topRuns.some(rId => openSet.has(rId))) continue; // every run up top is closed — don't ride it for nothing
 
           // How good are the runs this lift serves? Factor in which ones we've already skied
           let runQuality = 0;
@@ -2138,6 +2143,7 @@ const LIFT_COORDS = {
           for (const rId of availableRunIds) {
             const run = RUNS[rId];
             if (!run) continue;
+            if (hasOpenData && !openSet.has(rId)) continue; // closed today — never route through it
 
             const diffScore = scores[run.difficulty] || 0;
             const age = runHistory[rId] != null ? step - runHistory[rId] : 99;
@@ -2601,7 +2607,7 @@ const LIFT_COORDS = {
       );
     }
 
-    function RouteConfig({ onGenerate, groomedRunIds, groomedUpdatedAt, onReset }) {
+    function RouteConfig({ onGenerate, groomedRunIds, groomedUpdatedAt, openRunIds, onReset }) {
       const [diff, setDiff] = useState("greens-and-blues");
       const [hours, setHours] = useState(3);
       const [startBase, setStartBase] = useState("river-run-base");
@@ -2651,6 +2657,10 @@ const LIFT_COORDS = {
             {groomedRunIds && groomedRunIds.size > 0
               ? `${groomedRunIds.size} runs groomed today${groomedUpdatedAt ? ' · updated ' + new Date(groomedUpdatedAt).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : ''}`
               : 'No grooming data available yet today'}
+            <br />
+            {openRunIds && openRunIds.size > 0
+              ? `${openRunIds.size} of ${Object.keys(RUNS).length} runs open today — your route will only use those`
+              : 'No open-run data available yet — route may include closed runs'}
           </div>
 
           {/* Duration */}
@@ -2942,6 +2952,7 @@ const LIFT_COORDS = {
       const [activeSectionIdx, setActiveSectionIdx] = useState(0);
       const [groomedRunIds, setGroomedRunIds] = useState(new Set());
       const [groomedUpdatedAt, setGroomedUpdatedAt] = useState(null);
+      const [openRunIds, setOpenRunIds] = useState(new Set());
       const [profile, setProfile] = useState(() => loadProfile());
       const [runHistory, setRunHistory] = useState(() => loadRunHistory());
       const [showIntro, setShowIntro] = useState(false);
@@ -2985,8 +2996,11 @@ const LIFT_COORDS = {
               setGroomedRunIds(new Set(data.groomedRunIds));
               setGroomedUpdatedAt(data.updatedAt || null);
             }
+            if (data && Array.isArray(data.openRunIds)) {
+              setOpenRunIds(new Set(data.openRunIds));
+            }
           })
-          .catch(() => {}); // no grooming data available — app works fine without it
+          .catch(() => {}); // no grooming/open data available — app works fine without it
       }, []);
 
       // Group steps into sections: each lift starts a new section, subsequent runs belong to it
@@ -3019,7 +3033,7 @@ const LIFT_COORDS = {
       const activeStepIds = sections[activeSectionIdx]?.stepIds || new Set();
 
       const handleGenerate = useCallback(({ diff, totalMinutes, startBase, groomPref, bathroomEnabled, bathroomInterval, lunchEnabled }) => {
-        const result = generateRoute(diff, totalMinutes, startBase, groomPref, groomedRunIds, runHistory);
+        const result = generateRoute(diff, totalMinutes, startBase, groomPref, groomedRunIds, runHistory, openRunIds);
         const { steps: stepsWithBreaks, addedTime } = insertBreaks(result.steps, result.stats.endBase, { bathroomEnabled, bathroomInterval, lunchEnabled });
         setRouteResult({
           steps: stepsWithBreaks,
@@ -3039,7 +3053,7 @@ const LIFT_COORDS = {
           saveRunHistory(next);
           return next;
         });
-      }, [groomedRunIds, runHistory]);
+      }, [groomedRunIds, runHistory, openRunIds]);
 
       return (
         <div className="min-h-screen">
@@ -3057,7 +3071,7 @@ const LIFT_COORDS = {
 
               {/* Right: Controls + Route */}
               <div className="lg:col-span-2 space-y-5">
-                <RouteConfig onGenerate={handleGenerate} groomedRunIds={groomedRunIds} groomedUpdatedAt={groomedUpdatedAt} onReset={profile ? handleReset : null} />
+                <RouteConfig onGenerate={handleGenerate} groomedRunIds={groomedRunIds} groomedUpdatedAt={groomedUpdatedAt} openRunIds={openRunIds} onReset={profile ? handleReset : null} />
                 <RouteDisplay
                   result={routeResult}
                   hoveredRunId={hoveredRunId}

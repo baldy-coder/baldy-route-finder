@@ -1,6 +1,13 @@
 {
-  "updatedAt": "2026-11-26T21:17:25.843570+00:00",
+  "updatedAt": "2026-11-26T21:34:50.145503+00:00",
   "groomedRunIds": [
     "upper-college"
+  ],
+  "openRunIds": [
+    "1-80",
+    "upper-college",
+    "upper-limelight",
+    "upper-river-run",
+    "upper-warm-springs"
   ]
 }
